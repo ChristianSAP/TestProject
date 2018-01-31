@@ -4,6 +4,7 @@ import java.sql.*;
 
 public class Test {
        public static void main(String[] args) {
+    	   //ich hab hier was geädbnet!!!!
              Connection connection = null;
              String myname = "ETD_TEST_CLIENT";
              String mysecret= "Initial04";
