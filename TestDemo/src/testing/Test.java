@@ -12,6 +12,8 @@ public class Test {
 		String timeStamp = "20.01.2018 03:00:00.0";
 		String systemIdActor = "$T3/000";
 		String userIdActor = "552F9FEC6D382BA3E10000000A4CF109";
+		String networkHostnameTarget = "";
+		String networkIPAddressTarget = "10.96.97.67";
 		try { // opening connection to HANA db
 			connection = DriverManager.getConnection("jdbc:sap://ld3796.wdf.sap.corp:30015/?autocommit=false", myname,
 					mysecret);
@@ -22,7 +24,9 @@ public class Test {
 		// todo get log to analysis, do something with the result! -> score
 		// analysisUnusualTime(connection, systemIdActor, timeStamp,
 		// userIdActor);
-		analysisUnusualSystem(connection, systemIdActor, timeStamp, userIdActor);
+		// analysisUnusualSystem(connection, systemIdActor, timeStamp,
+		// userIdActor);
+		analysisUnusualHost(connection, userIdActor, networkHostnameTarget, networkIPAddressTarget);
 
 	}
 
@@ -80,13 +84,15 @@ public class Test {
 						"SELECT TOP 1 COUNT(\"SAP_SEC_MON\".\"sap.secmon.db::Log.Events\".\"TechnicalLogEntryType\"), \"SAP_SEC_MON\".\"sap.secmon.db::Log.Events\".\"SystemIdActor\","
 								+ "\"SAP_SEC_MON\".\"sap.secmon.db::Log.Events\".\"Timestamp\", \"SAP_SEC_MON\".\"sap.secmon.db::Log.Events\".\"UserIdActing\","
 								+ "\"SAP_SEC_MON\".\"sap.secmon.db::KnowledgeBase.LogEntryType\".\"eventName.name\""
-								
+
 								+ "FROM \"SAP_SEC_MON\".\"sap.secmon.db::Log.Events\""
 								+ "INNER JOIN \"SAP_SEC_MON\".\"sap.secmon.db::KnowledgeBase.LogEntryType\" "
 								+ "ON \"SAP_SEC_MON\".\"sap.secmon.db::KnowledgeBase.LogEntryType\".\"id\" = \"SAP_SEC_MON\".\"sap.secmon.db::Log.Events\".\"TechnicalLogEntryType\""
-								
-								+ "WHERE \"SAP_SEC_MON\".\"sap.secmon.db::Log.Events\".\"SystemIdActor\" = '" + systemIdActor + "' AND "
-								+ "\"SAP_SEC_MON\".\"sap.secmon.db::Log.Events\".\"UserIdActing\" = '" + userIdActor + "' AND"
+
+								+ "WHERE \"SAP_SEC_MON\".\"sap.secmon.db::Log.Events\".\"SystemIdActor\" = '"
+								+ systemIdActor + "' AND "
+								+ "\"SAP_SEC_MON\".\"sap.secmon.db::Log.Events\".\"UserIdActing\" = '" + userIdActor
+								+ "' AND"
 								+ "\"SAP_SEC_MON\".\"sap.secmon.db::KnowledgeBase.LogEntryType\".\"eventName.name\" = 'UserLogon' AND "
 								+ "\"SAP_SEC_MON\".\"sap.secmon.db::Log.Events\".\"Timestamp\" BETWEEN '01.11.2017 00:00:00.0' AND '31.01.2018 00:00:00.0'"
 								+ "GROUP BY \"SAP_SEC_MON\".\"sap.secmon.db::Log.Events\".\"SystemIdActor\","
@@ -95,14 +101,12 @@ public class Test {
 				// numberOfLogins = Integer.parseInt(resultSet.getString(1));
 				resultSet.next();
 				numberOfLogins = Long.parseLong(resultSet.getString(1));
-				//System.out.println(numberOfLogins);
-				if(numberOfLogins > 0){
+				// System.out.println(numberOfLogins);
+				if (numberOfLogins > 0) {
 					unusualSystem = false;
 				} else {
 					unusualSystem = true;
 				}
-
-				
 
 			} catch (SQLException e) {
 				System.err.println("Query failed!");
@@ -111,20 +115,62 @@ public class Test {
 		return unusualSystem;
 	}
 
+	public static boolean analysisUnusualProtocol(Connection connection) {
+		boolean unusualProtocol = false;
+		if (connection != null) {
+			// ja was?
+		}
+		return unusualProtocol;
+	}
+
+	public static boolean analysisUnusualHost(Connection connection, String userIdActor, String networkHostnameTarget,
+			String networkIPAddressTarget) {
+		boolean unusualHost = false;
+		
+		if (connection != null) {
+			try {
+				Statement stmt = connection.createStatement();
+				ResultSet resultSet = stmt.executeQuery(
+						"SELECT \"UserIdActing\", \"NetworkHostnameTarget\", \"NetworkIPAddressTarget\", \"ResourceRequestSize\", \"ResourceResponseSize\" FROM \"SAP_SEC_MON\".\"sap.secmon.db::Log.Events\" "
+								+ "WHERE \"UserIdActing\" = '" + userIdActor + "' AND \"NetworkIPAddressTarget\" = '"
+								+ networkIPAddressTarget + "' OR \"NetworkHostnameTarget\" = '" + networkHostnameTarget
+								+ "'");
+				
+				while (resultSet.next()) {
+					System.out.println("Hallo");
+					for (int i = 0; i <= resultSet.getMetaData().getColumnCount(); i++) {
+						if (i > 0) {
+							String columnValue = resultSet.getString(i);
+							System.out.print(resultSet.getMetaData().getColumnName(i) + ": " + columnValue);
+							System.out.print(", ");
+
+						}
+						System.out.println("");
+					}
+				}
+
+			} catch (SQLException e) {
+				System.err.println("Query failed!");
+			}
+		}
+		return unusualHost;
+	}
+
 }
 
-//alle daten ausgeben
-//while (resultSet.next()) {
-//for (int i = 0; i <= resultSet.getMetaData().getColumnCount(); i++) {
-//	if (i > 0) {
-//		String columnValue = resultSet.getString(i);
-//		System.out.print(resultSet.getMetaData().getColumnName(i) + ": " + columnValue);
-//		System.out.print(",  ");
+// alle daten ausgeben
+// while (resultSet.next()) {
+// for (int i = 0; i <= resultSet.getMetaData().getColumnCount(); i++) {
+// if (i > 0) {
+// String columnValue = resultSet.getString(i);
+// System.out.print(resultSet.getMetaData().getColumnName(i) + ": " +
+// columnValue);
+// System.out.print(", ");
 //
-//	}
-//	System.out.println("");
-//}
-//}
+// }
+// System.out.println("");
+// }
+// }
 
 // todo get current log
 // ResultSet resultSetCurrentlog = stmt.executeQuery(
