@@ -76,18 +76,19 @@ public class Test {
 		if (connection != null) {
 			try {
 				Statement stmt = connection.createStatement();
-				ResultSet resultSet = stmt.executeQuery("SELECT COUNT (\"UserIdActing\") FROM \"SAP_SEC_MON\".\"sap.secmon.db::Log.Events\" "
-						+ "WHERE \"SystemIdActor\" = '" + systemIdActor
-						+ "' AND \"Timestamp\" BETWEEN '01.11.2017 00:00:00.0' AND '31.01.2018 00:00:00.0' AND \"UserIdActor\" = '" + userIdActor + "'");
-				resultSet.next();
+				ResultSet resultSet = stmt.executeQuery("SELECT \"SAP_SEC_MON\".\"sap.secmon.db::Log.Events\".\"TechnicalLogEntryType\", \"SAP_SEC_MON\".\"sap.secmon.db::Log.Events\".\"SystemIdActor\","
+						+ "\"SAP_SEC_MON\".\"sap.secmon.db::Log.Events\".\"Timestamp\", \"SAP_SEC_MON\".\"sap.secmon.db::Log.Events\".\"UserIdActing\","
+						+ "\"SAP_SEC_MON\".\"sap.secmon.db::KnowledgeBase.LogEntryType\".\"eventName.name\""
+						+ "FROM \"SAP_SEC_MON\".\"sap.secmon.db::Log.Events\""
+						+ "INNER JOIN \"SAP_SEC_MON\".\"sap.secmon.db::KnowledgeBase.LogEntryType\" "
+						+ "ON \"SAP_SEC_MON\".\"sap.secmon.db::KnowledgeBase.LogEntryType\".\"id\" = \"SAP_SEC_MON\".\"sap.secmon.db::Log.Events\".\"TechnicalLogEntryType\""
+						+ "WHERE \"SAP_SEC_MON\".\"sap.secmon.db::Log.Events\".\"SystemIdActor\" = '" + systemIdActor + "' AND "
+						+ "\"SAP_SEC_MON\".\"sap.secmon.db::Log.Events\".\"UserIdActing\" = '" + userIdActor + "' AND"
+						+ "\"SAP_SEC_MON\".\"sap.secmon.db::Log.Events\".\"Timestamp\" BETWEEN '01.11.2017 00:00:00.0' AND '31.01.2018 00:00:00.0'");
 				numberOfLogins = Integer.parseInt(resultSet.getString(1));
 				System.out.println(numberOfLogins);
 				
-				if(numberOfLogins > 1){
-					unusualSystem = false;
-				} else {
-					unusualSystem = true;
-				}
+				
 				
 				
 			} catch (SQLException e) {
@@ -96,6 +97,8 @@ public class Test {
 		}
 		return unusualSystem;
 	}
+	
+
 }
 
 // todo get current log
