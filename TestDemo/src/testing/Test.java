@@ -77,29 +77,31 @@ public class Test {
 			try {
 				Statement stmt = connection.createStatement();
 				ResultSet resultSet = stmt.executeQuery(
-						"SELECT \"SAP_SEC_MON\".\"sap.secmon.db::Log.Events\".\"TechnicalLogEntryType\", \"SAP_SEC_MON\".\"sap.secmon.db::Log.Events\".\"SystemIdActor\","
+						"SELECT TOP 1 COUNT(\"SAP_SEC_MON\".\"sap.secmon.db::Log.Events\".\"TechnicalLogEntryType\"), \"SAP_SEC_MON\".\"sap.secmon.db::Log.Events\".\"SystemIdActor\","
 								+ "\"SAP_SEC_MON\".\"sap.secmon.db::Log.Events\".\"Timestamp\", \"SAP_SEC_MON\".\"sap.secmon.db::Log.Events\".\"UserIdActing\","
 								+ "\"SAP_SEC_MON\".\"sap.secmon.db::KnowledgeBase.LogEntryType\".\"eventName.name\""
+								
 								+ "FROM \"SAP_SEC_MON\".\"sap.secmon.db::Log.Events\""
 								+ "INNER JOIN \"SAP_SEC_MON\".\"sap.secmon.db::KnowledgeBase.LogEntryType\" "
 								+ "ON \"SAP_SEC_MON\".\"sap.secmon.db::KnowledgeBase.LogEntryType\".\"id\" = \"SAP_SEC_MON\".\"sap.secmon.db::Log.Events\".\"TechnicalLogEntryType\""
-								+ "WHERE \"SAP_SEC_MON\".\"sap.secmon.db::Log.Events\".\"SystemIdActor\" = '"
-								+ systemIdActor + "' AND "
+								
+								+ "WHERE \"SAP_SEC_MON\".\"sap.secmon.db::Log.Events\".\"SystemIdActor\" = '" + systemIdActor + "' AND "
 								+ "\"SAP_SEC_MON\".\"sap.secmon.db::Log.Events\".\"UserIdActing\" = '" + userIdActor + "' AND"
 								+ "\"SAP_SEC_MON\".\"sap.secmon.db::KnowledgeBase.LogEntryType\".\"eventName.name\" = 'UserLogon' AND "
-								+ "\"SAP_SEC_MON\".\"sap.secmon.db::Log.Events\".\"Timestamp\" BETWEEN '01.11.2017 00:00:00.0' AND '31.01.2018 00:00:00.0'");
+								+ "\"SAP_SEC_MON\".\"sap.secmon.db::Log.Events\".\"Timestamp\" BETWEEN '01.11.2017 00:00:00.0' AND '31.01.2018 00:00:00.0'"
+								+ "GROUP BY \"SAP_SEC_MON\".\"sap.secmon.db::Log.Events\".\"SystemIdActor\","
+								+ "\"SAP_SEC_MON\".\"sap.secmon.db::Log.Events\".\"Timestamp\", \"SAP_SEC_MON\".\"sap.secmon.db::Log.Events\".\"UserIdActing\","
+								+ "\"SAP_SEC_MON\".\"sap.secmon.db::KnowledgeBase.LogEntryType\".\"eventName.name\"");
 				// numberOfLogins = Integer.parseInt(resultSet.getString(1));
-				while (resultSet.next()) {
-					for (int i = 0; i <= resultSet.getMetaData().getColumnCount(); i++) {
-						if (i > 1) {
-							System.out.print(",  ");
-							String columnValue = resultSet.getString(i);
-							System.out.print(columnValue + " " + resultSet.getMetaData().getColumnName(i));
-
-						}
-						System.out.println("");
-					}
+				resultSet.next();
+				numberOfLogins = Long.parseLong(resultSet.getString(1));
+				//System.out.println(numberOfLogins);
+				if(numberOfLogins > 0){
+					unusualSystem = false;
+				} else {
+					unusualSystem = true;
 				}
+
 				
 
 			} catch (SQLException e) {
@@ -110,6 +112,19 @@ public class Test {
 	}
 
 }
+
+//alle daten ausgeben
+//while (resultSet.next()) {
+//for (int i = 0; i <= resultSet.getMetaData().getColumnCount(); i++) {
+//	if (i > 0) {
+//		String columnValue = resultSet.getString(i);
+//		System.out.print(resultSet.getMetaData().getColumnName(i) + ": " + columnValue);
+//		System.out.print(",  ");
+//
+//	}
+//	System.out.println("");
+//}
+//}
 
 // todo get current log
 // ResultSet resultSetCurrentlog = stmt.executeQuery(
