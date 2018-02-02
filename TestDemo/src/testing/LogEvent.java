@@ -14,16 +14,24 @@ public class LogEvent {
 	String networkHostnameTarget;
 	String networkIPAddressTarget;
 	long requestResponseSize;
+	String subnetIdInitiator;
+	String subnetIdActor;
+	String subnetIdTarget;
+
 	int score;
 
 	public LogEvent(String timeStamp, String systemIdActor, String userIdActor, String networkHostnameTarget,
-			String networkIPAddressTarget, long requestResponseSize) {
+			String networkIPAddressTarget, long requestResponseSize, String subnetIdInitiator, String subnetIdActor,
+			String subnetIdTarget) {
 		this.timeStamp = timeStamp;
 		this.systemIdActor = systemIdActor;
 		this.userIdActor = userIdActor;
 		this.networkHostnameTarget = networkHostnameTarget;
 		this.networkIPAddressTarget = networkIPAddressTarget;
 		this.requestResponseSize = requestResponseSize;
+		this.subnetIdActor = subnetIdActor;
+		this.subnetIdInitiator = subnetIdInitiator;
+		this.subnetIdTarget = subnetIdTarget;
 		this.score = 0;
 	}
 
@@ -37,11 +45,13 @@ public class LogEvent {
 			return;
 		}
 		// todo get log to analysis, do something with the result! -> score
+		// test data =======>
 		LogEvent logEvent = new LogEvent("20.01.2018 03:00:00.0", "$T3/000", "552F9FEC6D382BA3E10000000A4CF109", "",
-				"33.76.134.255", 789);
-		logEvent.analysisLogEventAPT();
+				"33.76.134.255", 789, "BF96E0572011F351E11700000A600446", "BF96E0572011F351E11700000A600446", "");
+		// logEvent.analysisLogEventAPT();
+		logEvent.analysisUnusualSubnetConnection();
 		System.out.println("Score: " + logEvent.score);
-
+		// <======
 	}
 
 	public int analysisLogEventAPT() {
@@ -53,8 +63,13 @@ public class LogEvent {
 			score++;
 		if (analysisUnusualHostOrIp())
 			score++;
-		if (analysisUnusuallyLowNumberOfBytes())
-			score++;
+		if (requestResponseSize != 0) {
+			if (analysisUnusuallyLowNumberOfBytes())
+				score++;
+		}
+		// if(analysisUnusualSubnetConnection())
+		// score++;
+
 		return score;
 	}
 
@@ -164,11 +179,7 @@ public class LogEvent {
 							"SELECT COUNT (\"UserIdActing\") FROM \"SAP_SEC_MON\".\"sap.secmon.db::Log.Events\" "
 									+ "WHERE \"UserIdActing\" = '" + userIdActor
 									+ "' AND \"NetworkIPAddressTarget\" = '" + networkIPAddressTarget
-									+ "' AND \"NetworkHostnameTarget\" IS NULL"); // AND
-																					// \"ResourceResponseSize\"
-																					// IS
-																					// NOT
-																					// NULL");
+									+ "' AND \"NetworkHostnameTarget\" IS NULL");
 					resultSet.next();
 					numberOfFormerConnections = Long.parseLong(resultSet.getString(1));
 					// System.out.println(numberOfFormerConnections);
@@ -185,15 +196,7 @@ public class LogEvent {
 					ResultSet resultSet = stmt.executeQuery(
 							"SELECT COUNT(\"UserIdActing\") FROM \"SAP_SEC_MON\".\"sap.secmon.db::Log.Events\" "
 									+ "WHERE \"UserIdActing\" = '" + userIdActor
-									+ "' AND \"NetworkIPAddressTarget\" IS NULL"); // AND
-																					// \"NetworkHostnameTarget\"
-																					// IS
-																					// NULL
-																					// AND
-																					// \"ResourceResponseSize\"
-																					// IS
-																					// NOT
-																					// NULL");
+									+ "' AND \"NetworkIPAddressTarget\" IS NULL");
 					resultSet.next();
 					numberOfFormerConnections = Long.parseLong(resultSet.getString(1));
 					// System.out.println(numberOfFormerConnections);
@@ -211,11 +214,7 @@ public class LogEvent {
 							"SELECT COUNT(\"UserIdActing\") FROM \"SAP_SEC_MON\".\"sap.secmon.db::Log.Events\" "
 									+ "WHERE \"UserIdActing\" = '" + userIdActor
 									+ "' AND \"NetworkIPAddressTarget\" = '" + networkIPAddressTarget
-									+ "' AND \"NetworkHostnameTarget\" IS NULL"); // AND
-																					// \"ResourceResponseSize\"
-																					// IS
-																					// NOT
-																					// NULL");
+									+ "' AND \"NetworkHostnameTarget\" IS NULL");
 
 					numberOfFormerConnections = Long.parseLong(resultSet.getString(1));
 					// System.out.println(numberOfFormerConnections);
@@ -246,8 +245,8 @@ public class LogEvent {
 				// is this calculation valid? Check it out!
 				ResultSet resultSet = stmt.executeQuery(
 						"SELECT AVG(\"ResourceResponseSize\")  - STDDEV(\"ResourceResponseSize\") FROM \"SAP_SEC_MON\".\"sap.secmon.db::Log.Events\""
-								+ "WHERE \"UserIdActing\" = '552F9FEC6D382BA3E10000000A4CF109'"
-								+ "AND \"ResourceResponseSize\" IS NOT NULL");
+								+ "WHERE \"UserIdActing\" = '" + userIdActor + "'"
+								+ " AND \"ResourceResponseSize\" IS NOT NULL");
 				resultSet.next();
 				if (this.requestResponseSize <= Double.parseDouble(resultSet.getString(1))) {
 					lowNumberOfBytes = true;
@@ -261,5 +260,77 @@ public class LogEvent {
 
 		}
 		return lowNumberOfBytes;
+	}
+
+	private boolean analysisUnusualSubnetConnection() {
+		boolean unusualSubnetConnection = false;
+		if (connection != null) {
+			try {
+				// unusual subnetidinitiator?
+				Statement stmt = connection.createStatement();
+				if (subnetIdInitiator != null) {
+					ResultSet resultSet = stmt.executeQuery(
+							"SELECT COUNT(\"UserIdActing\")  FROM \"SAP_SEC_MON\".\"sap.secmon.db::Log.Events\""
+									+ "WHERE  \"UserIdActing\" = '" + userIdActor
+									+ "' AND \"NetworkSubnetIdInitiator\" = '" + subnetIdInitiator + "'");
+					resultSet.next();
+					if (Integer.parseInt(resultSet.getString(1)) < 2) {
+						unusualSubnetConnection = true;
+					} else {
+						unusualSubnetConnection = false;
+						// unusual subnetidinitiator and actor?
+						if (subnetIdActor != null) {
+
+							ResultSet resultSetCase2 = stmt.executeQuery(
+									"SELECT COUNT(\"UserIdActing\")  FROM \"SAP_SEC_MON\".\"sap.secmon.db::Log.Events\""
+											+ "WHERE  \"UserIdActing\" = '" + userIdActor
+											+ "' AND \"NetworkSubnetIdInitiator\" = '" + subnetIdInitiator
+											+ "' AND \"NetworkSubnetIdActor\" = '" + subnetIdActor + "'");
+							resultSetCase2.next();
+							if (Integer.parseInt(resultSetCase2.getString(1)) < 2) {
+								unusualSubnetConnection = true;
+							} else {
+								unusualSubnetConnection = false;
+
+							}
+						}
+						// unusual subnetidinitiator and target?
+						if (subnetIdTarget != null && unusualSubnetConnection != true) {
+							ResultSet resultSetCase3 = stmt.executeQuery(
+									"SELECT COUNT(\"UserIdActing\")  FROM \"SAP_SEC_MON\".\"sap.secmon.db::Log.Events\""
+											+ "WHERE  \"UserIdActing\" = '" + userIdActor
+											+ "' AND \"NetworkSubnetIdInitiator\" = '" + subnetIdInitiator
+											+ "' AND \"NetworkSubnetIdTarget\" = '" + subnetIdTarget + "'");
+							resultSetCase3.next();
+							if (Integer.parseInt(resultSetCase3.getString(1)) < 2) {
+								unusualSubnetConnection = true;
+							} else {
+								unusualSubnetConnection = false;
+								// unusual subnetidinitiator, target and actor?
+								if (subnetIdActor != null) {
+									ResultSet resultSetCase4 = stmt.executeQuery(
+											"SELECT COUNT(\"UserIdActing\")  FROM \"SAP_SEC_MON\".\"sap.secmon.db::Log.Events\""
+													+ "WHERE  \"UserIdActing\" = '" + userIdActor
+													+ "' AND \"NetworkSubnetIdInitiator\" = '" + subnetIdInitiator
+													+ "' AND \"NetworkSubnetIdTarget\" = '" + subnetIdTarget + "'"
+													+ " AND \"NetworkSubnetIdActor\" = '" + subnetIdActor + "'");
+									resultSetCase4.next();
+									if(Integer.parseInt(resultSetCase4.getString(1)) < 2) {
+										unusualSubnetConnection = true;
+									} else {
+										unusualSubnetConnection = false;
+									}
+								}
+							}
+
+						}
+					}
+				}
+			} catch (SQLException e) {
+				System.err.println("Query failed!");
+			}
+
+		}
+		return unusualSubnetConnection;
 	}
 }
