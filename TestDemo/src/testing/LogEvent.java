@@ -2,20 +2,33 @@ package testing;
 
 import java.sql.*;
 
-import com.sun.org.apache.bcel.internal.generic.BREAKPOINT;
+public class LogEvent {
+	// variables for HANA db connection
+	static Connection connection = null;
+	static String myname = "ETD_TEST_CLIENT";
+	static String mysecret = "Initial04";
+	// variables to store information about current log
+	String timeStamp;
+	String systemIdActor;
+	String userIdActor;
+	String networkHostnameTarget;
+	String networkIPAddressTarget;
+	long requestResponseSize;
+	int score;
 
-public class Test {
+	public LogEvent(String timeStamp, String systemIdActor, String userIdActor, String networkHostnameTarget,
+			String networkIPAddressTarget, long requestResponseSize) {
+		this.timeStamp = timeStamp;
+		this.systemIdActor = systemIdActor;
+		this.userIdActor = userIdActor;
+		this.networkHostnameTarget = networkHostnameTarget;
+		this.networkIPAddressTarget = networkIPAddressTarget;
+		this.requestResponseSize = requestResponseSize;
+		this.score = 0;
+	}
+
 	public static void main(String[] args) {
-		// variables for HANA db connection
-		Connection connection = null;
-		String myname = "ETD_TEST_CLIENT";
-		String mysecret = "Initial04";
-		// variables to store information about current log
-		String timeStamp = "20.01.2018 03:00:00.0";
-		String systemIdActor = "$T3/000";
-		String userIdActor = "552F9FEC6D382BA3E10000000A4CF109";
-		String networkHostnameTarget = "";
-		String networkIPAddressTarget = "33.76.134.255";
+
 		try { // opening connection to HANA db
 			connection = DriverManager.getConnection("jdbc:sap://ld3796.wdf.sap.corp:30015/?autocommit=false", myname,
 					mysecret);
@@ -24,16 +37,29 @@ public class Test {
 			return;
 		}
 		// todo get log to analysis, do something with the result! -> score
-		// analysisUnusualTime(connection, systemIdActor, timeStamp,
-		// userIdActor);
-		// analysisUnusualSystem(connection, systemIdActor, timeStamp,
-		// userIdActor);
-		analysisUnusualHostOrIp(connection, userIdActor, networkHostnameTarget, networkIPAddressTarget);
+		LogEvent logEvent = new LogEvent("20.01.2018 03:00:00.0", "$T3/000", "552F9FEC6D382BA3E10000000A4CF109", "",
+				"33.76.134.255", 789);
+		logEvent.analysisLogEventAPT();
+		System.out.println("Score: " + logEvent.score);
+
 	}
 
-	// analysis: log at unusual time? (based on System ID, not User ID!)
-	public static boolean analysisUnusualTime(Connection connection, String systemIdActor, String timeStamp,
-			String userIdActor) {
+	public int analysisLogEventAPT() {
+		if (analysisUnusualProtocol())
+			score++;
+		if (analysisUnusualSystem())
+			score++;
+		if (analysisUnusualTime())
+			score++;
+		if (analysisUnusualHostOrIp())
+			score++;
+		if (analysisUnusuallyLowNumberOfBytes())
+			score++;
+		return score;
+	}
+
+	// analysis: log at unusual time? (based on User ID!)
+	private boolean analysisUnusualTime() {
 		boolean restPeriod = false;
 		long numberOfLogsTwoHours;
 		long numberOfLogsTenMinutes;
@@ -70,12 +96,13 @@ public class Test {
 				System.err.println("Query failed!");
 			}
 		}
-		System.out.println(restPeriod);
+		// System.out.println(restPeriod);
 		return restPeriod;
 	}
 
-	public static boolean analysisUnusualSystem(Connection connection, String systemIdActor, String timeStamp,
-			String userIdActor) {
+	// returns true, if the user has never successfully logged onto the system
+	// before
+	private boolean analysisUnusualSystem() {
 		boolean unusualSystem = true;
 		long numberOfLogins;
 		if (connection != null) {
@@ -116,7 +143,7 @@ public class Test {
 		return unusualSystem;
 	}
 
-	public static boolean analysisUnusualProtocol(Connection connection) {
+	private boolean analysisUnusualProtocol() {
 		boolean unusualProtocol = false;
 		if (connection != null) {
 			// ja was?
@@ -124,8 +151,7 @@ public class Test {
 		return unusualProtocol;
 	}
 
-	public static boolean analysisUnusualHostOrIp(Connection connection, String userIdActor,
-			String networkHostnameTarget, String networkIPAddressTarget) {
+	private boolean analysisUnusualHostOrIp() {
 		boolean unusualHost = false;
 		long numberOfFormerConnections;
 
@@ -138,10 +164,14 @@ public class Test {
 							"SELECT COUNT (\"UserIdActing\") FROM \"SAP_SEC_MON\".\"sap.secmon.db::Log.Events\" "
 									+ "WHERE \"UserIdActing\" = '" + userIdActor
 									+ "' AND \"NetworkIPAddressTarget\" = '" + networkIPAddressTarget
-									+ "' AND \"NetworkHostnameTarget\" IS NULL AND \"ResourceResponseSize\" IS NOT NULL");
+									+ "' AND \"NetworkHostnameTarget\" IS NULL"); // AND
+																					// \"ResourceResponseSize\"
+																					// IS
+																					// NOT
+																					// NULL");
 					resultSet.next();
 					numberOfFormerConnections = Long.parseLong(resultSet.getString(1));
-					System.out.println(numberOfFormerConnections);
+					// System.out.println(numberOfFormerConnections);
 
 					if (numberOfFormerConnections > 0) {
 						unusualHost = false;
@@ -155,10 +185,18 @@ public class Test {
 					ResultSet resultSet = stmt.executeQuery(
 							"SELECT COUNT(\"UserIdActing\") FROM \"SAP_SEC_MON\".\"sap.secmon.db::Log.Events\" "
 									+ "WHERE \"UserIdActing\" = '" + userIdActor
-									+ "' AND \"NetworkIPAddressTarget\" IS NULL AND \"NetworkHostnameTarget\" IS NULL AND \"ResourceResponseSize\" IS NOT NULL");
+									+ "' AND \"NetworkIPAddressTarget\" IS NULL"); // AND
+																					// \"NetworkHostnameTarget\"
+																					// IS
+																					// NULL
+																					// AND
+																					// \"ResourceResponseSize\"
+																					// IS
+																					// NOT
+																					// NULL");
 					resultSet.next();
 					numberOfFormerConnections = Long.parseLong(resultSet.getString(1));
-					System.out.println(numberOfFormerConnections);
+					// System.out.println(numberOfFormerConnections);
 
 					if (numberOfFormerConnections > 0) {
 						unusualHost = false;
@@ -173,10 +211,14 @@ public class Test {
 							"SELECT COUNT(\"UserIdActing\") FROM \"SAP_SEC_MON\".\"sap.secmon.db::Log.Events\" "
 									+ "WHERE \"UserIdActing\" = '" + userIdActor
 									+ "' AND \"NetworkIPAddressTarget\" = '" + networkIPAddressTarget
-									+ "' AND \"NetworkHostnameTarget\" IS NULL AND \"ResourceResponseSize\" IS NOT NULL");
+									+ "' AND \"NetworkHostnameTarget\" IS NULL"); // AND
+																					// \"ResourceResponseSize\"
+																					// IS
+																					// NOT
+																					// NULL");
 
 					numberOfFormerConnections = Long.parseLong(resultSet.getString(1));
-					System.out.println(numberOfFormerConnections);
+					// System.out.println(numberOfFormerConnections);
 
 					if (numberOfFormerConnections > 0) {
 						unusualHost = false;
@@ -195,35 +237,29 @@ public class Test {
 		return unusualHost;
 	}
 
+	private boolean analysisUnusuallyLowNumberOfBytes() {
+		boolean lowNumberOfBytes = false;
+		if (connection != null) {
+			try {
+				Statement stmt = connection.createStatement();
+
+				// is this calculation valid? Check it out!
+				ResultSet resultSet = stmt.executeQuery(
+						"SELECT AVG(\"ResourceResponseSize\")  - STDDEV(\"ResourceResponseSize\") FROM \"SAP_SEC_MON\".\"sap.secmon.db::Log.Events\""
+								+ "WHERE \"UserIdActing\" = '552F9FEC6D382BA3E10000000A4CF109'"
+								+ "AND \"ResourceResponseSize\" IS NOT NULL");
+				resultSet.next();
+				if (this.requestResponseSize <= Double.parseDouble(resultSet.getString(1))) {
+					lowNumberOfBytes = true;
+				} else {
+					lowNumberOfBytes = false;
+				}
+
+			} catch (SQLException e) {
+				System.err.println("Query failed!");
+			}
+
+		}
+		return lowNumberOfBytes;
+	}
 }
-
-// alle daten ausgeben
-// while (resultSet.next()) {
-// for (int i = 0; i <= resultSet.getMetaData().getColumnCount(); i++) {
-// if (i > 0) {
-// String columnValue = resultSet.getString(i);
-// System.out.print(resultSet.getMetaData().getColumnName(i) + ": " +
-// columnValue);
-// System.out.print(", ");
-//
-// }
-// System.out.println("");
-// }
-// }
-
-// todo get current log
-// ResultSet resultSetCurrentlog = stmt.executeQuery(
-// "SELECT DISTINCT \"Id\", \"Timestamp\", \"AttackName\",
-// \"CorrelationId\", \"EventLogType\", \"EventSourceId\",
-// \"GenericAction\","
-// + "\"GenericPurpose\", \"GenericRiskLevel\",
-// \"GenericScore\", \"NetworkIPAddressTarget\",
-// \"NetworkIPAddressInitiator\", \"NetworkPortTarget\",
-// \"NetworkProtocol\""
-// + "\"NetworkPortInitiator\", \"ResourceName\",
-// \"SystemIdTarget\", \"SystemIdInitiator\",
-// \"SystemTypeTarget\", \"SystemTypeInitiator\""
-// + " FROM \"SAP_SEC_MON\".\"sap.secmon.db::Log.Events\" "
-// + "WHERE \"UserIdActing\" IS NOT NULL AND
-// \"TimestampOfStart\" BETWEEN '20.01.2018 01:00:00.0' AND
-// '20.01.2018 03:00:00.0'");
