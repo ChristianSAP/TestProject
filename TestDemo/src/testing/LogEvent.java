@@ -13,6 +13,8 @@ public class LogEvent {
 	String userIdActor;
 	String networkHostnameTarget;
 	String networkIPAddressTarget;
+	String networkIPAddressActor;
+	String networkIPAddressInitiator;
 	long requestResponseSize;
 	String subnetIdInitiator;
 	String subnetIdActor;
@@ -22,7 +24,7 @@ public class LogEvent {
 
 	public LogEvent(String timeStamp, String systemIdActor, String userIdActor, String networkHostnameTarget,
 			String networkIPAddressTarget, long requestResponseSize, String subnetIdInitiator, String subnetIdActor,
-			String subnetIdTarget) {
+			String subnetIdTarget, String networkIPAddressActor, String networkIPAddressInitiator) {
 		this.timeStamp = timeStamp;
 		this.systemIdActor = systemIdActor;
 		this.userIdActor = userIdActor;
@@ -32,6 +34,8 @@ public class LogEvent {
 		this.subnetIdActor = subnetIdActor;
 		this.subnetIdInitiator = subnetIdInitiator;
 		this.subnetIdTarget = subnetIdTarget;
+		this.networkIPAddressActor = networkIPAddressActor;
+		this.networkIPAddressInitiator = networkIPAddressInitiator;
 		this.score = 0;
 	}
 
@@ -47,7 +51,7 @@ public class LogEvent {
 		// todo get log to analysis, do something with the result! -> score
 		// test data =======>
 		LogEvent logEvent = new LogEvent("20.01.2018 03:00:00.0", "$T3/000", "552F9FEC6D382BA3E10000000A4CF109", "",
-				"33.76.134.255", 789, "BF96E0572011F351E11700000A600446", "BF96E0572011F351E11700000A600446", null);
+				"33.76.134.255", 789, "BF96E0572011F351E11700000A600446", "BF96E0572011F351E11700000A600446", null, null, null);
 		logEvent.analysisLogEventAPT();
 		System.out.println("Score: " + logEvent.score);
 		// <======
@@ -341,5 +345,23 @@ public class LogEvent {
 
 		}
 		return unusualSubnetConnection;
+	}
+
+	private boolean analysisUnusualPortscanning() {
+		boolean unusualPortScanning = false;
+		if (connection != null) {
+			try {
+				Statement stmt = connection.createStatement();
+				ResultSet resultSet = stmt.executeQuery(
+						"SELECT AVG(\"ResourceResponseSize\")  - STDDEV(\"ResourceResponseSize\") FROM \"SAP_SEC_MON\".\"sap.secmon.db::Log.Events\""
+								+ "WHERE \"UserIdActing\" = '" + userIdActor + "'"
+								+ " AND \"ResourceResponseSize\" IS NOT NULL");
+				resultSet.next();
+
+			} catch (SQLException e) {
+				System.err.println("Query failed!");
+			}
+		}
+		return unusualPortScanning;
 	}
 }
