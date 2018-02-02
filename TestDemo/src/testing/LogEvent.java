@@ -47,9 +47,8 @@ public class LogEvent {
 		// todo get log to analysis, do something with the result! -> score
 		// test data =======>
 		LogEvent logEvent = new LogEvent("20.01.2018 03:00:00.0", "$T3/000", "552F9FEC6D382BA3E10000000A4CF109", "",
-				"33.76.134.255", 789, "BF96E0572011F351E11700000A600446", "BF96E0572011F351E11700000A600446", "");
-		// logEvent.analysisLogEventAPT();
-		logEvent.analysisUnusualSubnetConnection();
+				"33.76.134.255", 789, "BF96E0572011F351E11700000A600446", "BF96E0572011F351E11700000A600446", null);
+		logEvent.analysisLogEventAPT();
 		System.out.println("Score: " + logEvent.score);
 		// <======
 	}
@@ -57,18 +56,24 @@ public class LogEvent {
 	public int analysisLogEventAPT() {
 		if (analysisUnusualProtocol())
 			score++;
+		System.out.println(score);
 		if (analysisUnusualSystem())
 			score++;
+		System.out.println(score);
 		if (analysisUnusualTime())
 			score++;
+		System.out.println(score);
 		if (analysisUnusualHostOrIp())
 			score++;
+		System.out.println(score);
 		if (requestResponseSize != 0) {
 			if (analysisUnusuallyLowNumberOfBytes())
 				score++;
 		}
-		// if(analysisUnusualSubnetConnection())
-		// score++;
+		System.out.println(score);
+		if (analysisUnusualSubnetConnection())
+			score++;
+		System.out.println(score);
 
 		return score;
 	}
@@ -276,6 +281,7 @@ public class LogEvent {
 					resultSet.next();
 					if (Integer.parseInt(resultSet.getString(1)) < 2) {
 						unusualSubnetConnection = true;
+						System.out.println("case 1");
 					} else {
 						unusualSubnetConnection = false;
 						// unusual subnetidinitiator and actor?
@@ -289,6 +295,7 @@ public class LogEvent {
 							resultSetCase2.next();
 							if (Integer.parseInt(resultSetCase2.getString(1)) < 2) {
 								unusualSubnetConnection = true;
+								System.out.println("case 2");
 							} else {
 								unusualSubnetConnection = false;
 
@@ -304,6 +311,7 @@ public class LogEvent {
 							resultSetCase3.next();
 							if (Integer.parseInt(resultSetCase3.getString(1)) < 2) {
 								unusualSubnetConnection = true;
+								System.out.println("case 3");
 							} else {
 								unusualSubnetConnection = false;
 								// unusual subnetidinitiator, target and actor?
@@ -315,8 +323,9 @@ public class LogEvent {
 													+ "' AND \"NetworkSubnetIdTarget\" = '" + subnetIdTarget + "'"
 													+ " AND \"NetworkSubnetIdActor\" = '" + subnetIdActor + "'");
 									resultSetCase4.next();
-									if(Integer.parseInt(resultSetCase4.getString(1)) < 2) {
+									if (Integer.parseInt(resultSetCase4.getString(1)) < 2) {
 										unusualSubnetConnection = true;
+										System.out.println("case 4");
 									} else {
 										unusualSubnetConnection = false;
 									}
