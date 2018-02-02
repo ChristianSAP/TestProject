@@ -2,6 +2,8 @@ package testing;
 
 import java.sql.*;
 
+import com.sun.org.apache.xalan.internal.xsltc.compiler.Pattern;
+
 public class LogEvent {
 	// variables for HANA db connection
 	static Connection connection = null;
@@ -51,8 +53,10 @@ public class LogEvent {
 		// todo get log to analysis, do something with the result! -> score
 		// test data =======>
 		LogEvent logEvent = new LogEvent("20.01.2018 03:00:00.0", "$T3/000", "552F9FEC6D382BA3E10000000A4CF109", "",
-				"33.76.134.255", 789, "BF96E0572011F351E11700000A600446", "BF96E0572011F351E11700000A600446", null, null, null);
-		logEvent.analysisLogEventAPT();
+				"33.76.141.255", 789, "BF96E0572011F351E11700000A600446", "BF96E0572011F351E11700000A600446", null,
+				null, "33.76.141.50");
+		// logEvent.analysisLogEventAPT();
+		logEvent.analysisUnusualPortscanning();
 		System.out.println("Score: " + logEvent.score);
 		// <======
 	}
@@ -78,6 +82,8 @@ public class LogEvent {
 		if (analysisUnusualSubnetConnection())
 			score++;
 		System.out.println(score);
+		if (analysisUnusualPortscanning())
+			score++;
 
 		return score;
 	}
@@ -351,12 +357,122 @@ public class LogEvent {
 		boolean unusualPortScanning = false;
 		if (connection != null) {
 			try {
-				Statement stmt = connection.createStatement();
-				ResultSet resultSet = stmt.executeQuery(
-						"SELECT AVG(\"ResourceResponseSize\")  - STDDEV(\"ResourceResponseSize\") FROM \"SAP_SEC_MON\".\"sap.secmon.db::Log.Events\""
-								+ "WHERE \"UserIdActing\" = '" + userIdActor + "'"
-								+ " AND \"ResourceResponseSize\" IS NOT NULL");
-				resultSet.next();
+				if (networkIPAddressTarget != null) {
+					Statement stmt = connection.createStatement();
+					String[] ip_target = networkIPAddressTarget.split("\\.");
+					if (networkIPAddressInitiator != null) {
+						// compare initiator and target address
+						String[] ip_initiator = networkIPAddressInitiator.split("\\.");
+						if (Integer.parseInt(ip_initiator[0]) == Integer.parseInt(ip_target[0])
+								&& Integer.parseInt(ip_initiator[1]) == Integer.parseInt(ip_target[1])
+								&& Integer.parseInt(ip_initiator[2]) == Integer.parseInt(ip_target[2])
+								&& Integer.parseInt(ip_initiator[3]) != Integer.parseInt(ip_target[3])) {
+							// first 3 numbers of ip identical, last different
+							// compare past connections: IP Scanning?
+							String ip_substring = ip_initiator[0] + "." + ip_initiator[1] + "." + ip_initiator[2] + ".";
+							int substring_length = ip_substring.length();
+							int deviceIPLength = ip_initiator[3].length();
+							ResultSet resultSet = stmt.executeQuery(
+									"SELECT COUNT(\"NetworkIPAddressInitiator\") FROM \"SAP_SEC_MON\".\"sap.secmon.db::Log.Events\" "
+											+ "WHERE \"NetworkIPAddressInitiator\" = '" + networkIPAddressInitiator
+											+ "' AND SUBSTRING(\"NetworkIPAddressTarget\", 0, " + substring_length
+											+ ") = '" + ip_substring + "' AND SUBSTRING(\"NetworkIPAddressTarget\", "
+											+ (substring_length + 1) + ", " + deviceIPLength + ") <> '"
+											+ ip_initiator[3]
+											+ "' AND \"Timestamp\" BETWEEN '24.01.2018 00:00:00.0' AND '31.01.2018 00:00:00.0'");
+							resultSet.next();
+							if (Integer.parseInt(resultSet.getString(1)) > 4) {
+								unusualPortScanning = true;
+							} else {
+								// the following code might not be necessary as adding another condition won't give us more results.
+//								if (networkIPAddressActor != null) {
+//									// compare actor and target address
+//									String[] ip_actor = networkIPAddressActor.split("\\.");
+//									if (Integer.parseInt(ip_actor[0]) == Integer.parseInt(ip_target[0])
+//											&& Integer.parseInt(ip_actor[1]) == Integer.parseInt(ip_target[1])
+//											&& Integer.parseInt(ip_actor[2]) == Integer.parseInt(ip_target[2])
+//											&& Integer.parseInt(ip_actor[3]) != Integer.parseInt(ip_target[3])) {
+//										// first 3 numbers of ip identical, last
+//										// different
+//										// compare past connections: IP Scanning?
+//										String ip_substringA = ip_actor[0] + "." + ip_actor[1] + "." + ip_actor[2] + ".";
+//										int substring_lengthA = ip_substringA.length();
+//										int deviceIPLengthA = ip_actor[3].length();
+//										ResultSet resultSetA = stmt.executeQuery(
+//												"SELECT COUNT(\"NetworkIPAddressActor\") FROM \"SAP_SEC_MON\".\"sap.secmon.db::Log.Events\" "
+//														+ "WHERE \"NetworkIPAddressActor\" = '" + networkIPAddressActor
+//														+ "' AND SUBSTRING(\"NetworkIPAddressTarget\", 0, " + substring_lengthA
+//														+ ") = '" + ip_substringA
+//														+ "' AND SUBSTRING(\"NetworkIPAddressTarget\", "
+//														+ (substring_lengthA + 1) + ", " + deviceIPLengthA + ") <> '"
+//														+ ip_actor[3] 
+//														+ "' AND \"Timestamp\" BETWEEN '24.01.2018 00:00:00.0' AND '31.01.2018 00:00:00.0'");
+//										resultSetA.next();
+//										if (Integer.parseInt(resultSetA.getString(1)) > 4) {
+//											unusualPortScanning = true;
+//										} else {
+//											unusualPortScanning = false;
+//										}
+//
+//									} else {
+//										// ip addresses aren't neighbouring addresses
+//										unusualPortScanning = false;
+//									}
+//								} else {
+//									unusualPortScanning = false;
+//									// System.out.println("IP analysis impossible:
+//									// target IP is missing.");
+//									// analysis with initiator done, actor ip missing.
+//									// very likely, do nothing as it is no problem
+//								}								
+								unusualPortScanning = false;
+							}
+
+						} else {
+							// no neighboring ip addresses
+							unusualPortScanning = false;
+						}
+
+					} else {
+						if (networkIPAddressActor != null) {
+							String[] ip_actor = networkIPAddressActor.split("\\.");
+							if (Integer.parseInt(ip_actor[0]) == Integer.parseInt(ip_target[0])
+									&& Integer.parseInt(ip_actor[1]) == Integer.parseInt(ip_target[1])
+									&& Integer.parseInt(ip_actor[2]) == Integer.parseInt(ip_target[2])
+									&& Integer.parseInt(ip_actor[3]) != Integer.parseInt(ip_target[3])) {
+								// first 3 numbers of ip identical, last
+								// different
+								// compare past connections: IP Scanning?
+								String ip_substringA = ip_actor[0] + "." + ip_actor[1] + "." + ip_actor[2] + ".";
+								int substring_lengthA = ip_substringA.length();
+								int deviceIPLengthA = ip_actor[3].length();
+								ResultSet resultSetA = stmt.executeQuery(
+										"SELECT COUNT(\"NetworkIPAddressActor\") FROM \"SAP_SEC_MON\".\"sap.secmon.db::Log.Events\" "
+												+ "WHERE \"NetworkIPAddressActor\" = '" + networkIPAddressActor
+												+ "' AND SUBSTRING(\"NetworkIPAddressTarget\", 0, " + substring_lengthA
+												+ ") = '" + ip_substringA
+												+ "' AND SUBSTRING(\"NetworkIPAddressTarget\", "
+												+ (substring_lengthA + 1) + ", " + deviceIPLengthA + ") <> '"
+												+ ip_actor[3]
+												+ "' AND \"Timestamp\" BETWEEN '24.01.2018 00:00:00.0' AND '31.01.2018 00:00:00.0'");
+								resultSetA.next();
+								if (Integer.parseInt(resultSetA.getString(1)) > 4) {
+									unusualPortScanning = true;
+								} else {
+									unusualPortScanning = false;
+								}
+
+							} else {
+								// ip addresses aren't neighboring addresses
+								unusualPortScanning = false;
+							}
+						} else {
+							System.out.println("IP analysis impossible: actor and initiator IP is missing.");
+						}
+					}
+				} else {
+					System.out.println("IP analysis impossible: target IP is missing.");
+				}
 
 			} catch (SQLException e) {
 				System.err.println("Query failed!");
@@ -365,3 +481,13 @@ public class LogEvent {
 		return unusualPortScanning;
 	}
 }
+
+//// Code Depot jana:
+// String[] ip_parts = networkIPAddressInitiator.split(".");
+// System.out.println(ip_parts);
+// String networkIP = ip_parts[0] + "." + ip_parts[1] + "." + ip_parts[2];
+// System.out.println(networkIP);
+// Statement stmt = connection.createStatement();
+// ResultSet resultSet = stmt.executeQuery("SELECT * FROM
+//// \"SAP_SEC_MON\".\"sap.secmon.db::Log.Events\"");
+// resultSet.next();
