@@ -359,113 +359,25 @@ public class LogEvent {
 			try {
 				if (networkIPAddressTarget != null) {
 					Statement stmt = connection.createStatement();
-					String[] ip_target = networkIPAddressTarget.split("\\.");
 					if (networkIPAddressInitiator != null) {
-						// compare initiator and target address
-						String[] ip_initiator = networkIPAddressInitiator.split("\\.");
-						if (Integer.parseInt(ip_initiator[0]) == Integer.parseInt(ip_target[0])
-								&& Integer.parseInt(ip_initiator[1]) == Integer.parseInt(ip_target[1])
-								&& Integer.parseInt(ip_initiator[2]) == Integer.parseInt(ip_target[2])
-								&& Integer.parseInt(ip_initiator[3]) != Integer.parseInt(ip_target[3])) {
-							// first 3 numbers of ip identical, last different
-							// compare past connections: IP Scanning?
-							String ip_substring = ip_initiator[0] + "." + ip_initiator[1] + "." + ip_initiator[2] + ".";
-							int substring_length = ip_substring.length();
-							int deviceIPLength = ip_initiator[3].length();
-							ResultSet resultSet = stmt.executeQuery(
-									"SELECT COUNT(\"NetworkIPAddressInitiator\") FROM \"SAP_SEC_MON\".\"sap.secmon.db::Log.Events\" "
-											+ "WHERE \"NetworkIPAddressInitiator\" = '" + networkIPAddressInitiator
-											+ "' AND SUBSTRING(\"NetworkIPAddressTarget\", 0, " + substring_length
-											+ ") = '" + ip_substring + "' AND SUBSTRING(\"NetworkIPAddressTarget\", "
-											+ (substring_length + 1) + ", " + deviceIPLength + ") <> '"
-											+ ip_initiator[3]
-											+ "' AND \"Timestamp\" BETWEEN '24.01.2018 00:00:00.0' AND '31.01.2018 00:00:00.0'");
-							resultSet.next();
-							if (Integer.parseInt(resultSet.getString(1)) > 4) {
-								unusualPortScanning = true;
+						// ceck for portscanning from the initiator IP address
+						if (this._checkUnusualPortscanning("initiator", stmt)) {
+							// portscanning from the initiator IP
+							unusualPortScanning = true;
+							return unusualPortScanning;
+						} else { // check for portscanning from the actor IP
+							if (networkIPAddressActor != null) {
+								return this._checkUnusualPortscanning("actor", stmt);
 							} else {
-								// the following code might not be necessary as adding another condition won't give us more results.
-//								if (networkIPAddressActor != null) {
-//									// compare actor and target address
-//									String[] ip_actor = networkIPAddressActor.split("\\.");
-//									if (Integer.parseInt(ip_actor[0]) == Integer.parseInt(ip_target[0])
-//											&& Integer.parseInt(ip_actor[1]) == Integer.parseInt(ip_target[1])
-//											&& Integer.parseInt(ip_actor[2]) == Integer.parseInt(ip_target[2])
-//											&& Integer.parseInt(ip_actor[3]) != Integer.parseInt(ip_target[3])) {
-//										// first 3 numbers of ip identical, last
-//										// different
-//										// compare past connections: IP Scanning?
-//										String ip_substringA = ip_actor[0] + "." + ip_actor[1] + "." + ip_actor[2] + ".";
-//										int substring_lengthA = ip_substringA.length();
-//										int deviceIPLengthA = ip_actor[3].length();
-//										ResultSet resultSetA = stmt.executeQuery(
-//												"SELECT COUNT(\"NetworkIPAddressActor\") FROM \"SAP_SEC_MON\".\"sap.secmon.db::Log.Events\" "
-//														+ "WHERE \"NetworkIPAddressActor\" = '" + networkIPAddressActor
-//														+ "' AND SUBSTRING(\"NetworkIPAddressTarget\", 0, " + substring_lengthA
-//														+ ") = '" + ip_substringA
-//														+ "' AND SUBSTRING(\"NetworkIPAddressTarget\", "
-//														+ (substring_lengthA + 1) + ", " + deviceIPLengthA + ") <> '"
-//														+ ip_actor[3] 
-//														+ "' AND \"Timestamp\" BETWEEN '24.01.2018 00:00:00.0' AND '31.01.2018 00:00:00.0'");
-//										resultSetA.next();
-//										if (Integer.parseInt(resultSetA.getString(1)) > 4) {
-//											unusualPortScanning = true;
-//										} else {
-//											unusualPortScanning = false;
-//										}
-//
-//									} else {
-//										// ip addresses aren't neighbouring addresses
-//										unusualPortScanning = false;
-//									}
-//								} else {
-//									unusualPortScanning = false;
-//									// System.out.println("IP analysis impossible:
-//									// target IP is missing.");
-//									// analysis with initiator done, actor ip missing.
-//									// very likely, do nothing as it is no problem
-//								}								
+								// no portscanning from initiator or actor ip
+								// address
 								unusualPortScanning = false;
+								return unusualPortScanning;
 							}
-
-						} else {
-							// no neighboring ip addresses
-							unusualPortScanning = false;
 						}
-
-					} else {
+					} else { // no initiator IP address given
 						if (networkIPAddressActor != null) {
-							String[] ip_actor = networkIPAddressActor.split("\\.");
-							if (Integer.parseInt(ip_actor[0]) == Integer.parseInt(ip_target[0])
-									&& Integer.parseInt(ip_actor[1]) == Integer.parseInt(ip_target[1])
-									&& Integer.parseInt(ip_actor[2]) == Integer.parseInt(ip_target[2])
-									&& Integer.parseInt(ip_actor[3]) != Integer.parseInt(ip_target[3])) {
-								// first 3 numbers of ip identical, last
-								// different
-								// compare past connections: IP Scanning?
-								String ip_substringA = ip_actor[0] + "." + ip_actor[1] + "." + ip_actor[2] + ".";
-								int substring_lengthA = ip_substringA.length();
-								int deviceIPLengthA = ip_actor[3].length();
-								ResultSet resultSetA = stmt.executeQuery(
-										"SELECT COUNT(\"NetworkIPAddressActor\") FROM \"SAP_SEC_MON\".\"sap.secmon.db::Log.Events\" "
-												+ "WHERE \"NetworkIPAddressActor\" = '" + networkIPAddressActor
-												+ "' AND SUBSTRING(\"NetworkIPAddressTarget\", 0, " + substring_lengthA
-												+ ") = '" + ip_substringA
-												+ "' AND SUBSTRING(\"NetworkIPAddressTarget\", "
-												+ (substring_lengthA + 1) + ", " + deviceIPLengthA + ") <> '"
-												+ ip_actor[3]
-												+ "' AND \"Timestamp\" BETWEEN '24.01.2018 00:00:00.0' AND '31.01.2018 00:00:00.0'");
-								resultSetA.next();
-								if (Integer.parseInt(resultSetA.getString(1)) > 4) {
-									unusualPortScanning = true;
-								} else {
-									unusualPortScanning = false;
-								}
-
-							} else {
-								// ip addresses aren't neighboring addresses
-								unusualPortScanning = false;
-							}
+							return this._checkUnusualPortscanning("actor", stmt);
 						} else {
 							System.out.println("IP analysis impossible: actor and initiator IP is missing.");
 						}
@@ -480,6 +392,63 @@ public class LogEvent {
 		}
 		return unusualPortScanning;
 	}
+
+	// ipAddress should either contain "actor" or "initiator"
+	private boolean _checkUnusualPortscanning(String ipAddress, Statement stmt) {
+		boolean unusualPortScanning = false;
+		String ipName = null;
+		String comparableIPAddress = null;
+		String[] ip_compare = null;
+		String[] ip_target = networkIPAddressTarget.split("\\.");
+
+		if (ipAddress == "actor") {
+			ip_compare = networkIPAddressActor.split("\\.");
+			ipName = "NetworkIPAddressActor";
+			comparableIPAddress = networkIPAddressActor;
+		} else if (ipAddress == "initiator") {
+			ip_compare = networkIPAddressInitiator.split("\\.");
+			ipName = "NetworkIPAddressInitiator";
+			comparableIPAddress = networkIPAddressInitiator;
+		} else {
+			System.err.println("Error: ipAddress does not conatain \"actor\" or \"initiator\"");
+		}
+
+		//
+		if (Integer.parseInt(ip_compare[0]) == Integer.parseInt(ip_target[0])
+				&& Integer.parseInt(ip_compare[1]) == Integer.parseInt(ip_target[1])
+				&& Integer.parseInt(ip_compare[2]) == Integer.parseInt(ip_target[2])
+				&& Integer.parseInt(ip_compare[3]) != Integer.parseInt(ip_target[3])) {
+			// first 3 numbers of ip identical, last
+			// different
+			// compare past connections: IP Scanning?
+			try {
+				String ip_substring = ip_compare[0] + "." + ip_compare[1] + "." + ip_compare[2] + ".";
+				int substring_length = ip_substring.length();
+				int deviceIPLength = ip_compare[3].length();
+				ResultSet resultSet = stmt.executeQuery("SELECT COUNT(\"" + ipName
+						+ "\") FROM \"SAP_SEC_MON\".\"sap.secmon.db::Log.Events\" " + "WHERE \"" + ipName + "\" = '"
+						+ comparableIPAddress + "' AND SUBSTRING(\"NetworkIPAddressTarget\", 0, " + substring_length
+						+ ") = '" + ip_substring + "' AND SUBSTRING(\"NetworkIPAddressTarget\", "
+						+ (substring_length + 1) + ", " + deviceIPLength + ") <> '" + ip_compare[3]
+						+ "' AND \"Timestamp\" BETWEEN '24.01.2018 00:00:00.0' AND '31.01.2018 00:00:00.0'");
+				resultSet.next();
+				if (Integer.parseInt(resultSet.getString(1)) > 4) {
+					unusualPortScanning = true;
+				} else {
+					unusualPortScanning = false;
+				}
+
+			} catch (SQLException e) {
+				System.err.println("Query failed!");
+			}
+		} else {
+			// ip addresses aren't neighboring addresses
+			unusualPortScanning = false;
+		}
+
+		return unusualPortScanning;
+	}
+
 }
 
 //// Code Depot jana:
