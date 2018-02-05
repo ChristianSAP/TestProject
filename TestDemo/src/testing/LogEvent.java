@@ -21,7 +21,6 @@ public class LogEvent {
 	String subnetIdInitiator;
 	String subnetIdActor;
 	String subnetIdTarget;
-
 	int score;
 
 	public LogEvent(String timeStamp, String systemIdActor, String userIdActor, String networkHostnameTarget,
@@ -41,6 +40,16 @@ public class LogEvent {
 		this.score = 0;
 	}
 
+	@Override
+	public String toString() {
+		return "Timestamp: " + timeStamp + "\nSystemIdActor: " + systemIdActor + "\nUserIdActing: " + userIdActor
+				+ "\nNetworkHostnameTarget: " + networkHostnameTarget + "\nNetworkIPAddressTarget: "
+				+ networkIPAddressTarget + "\nNatworkIPAddressActor: " + networkIPAddressActor
+				+ "\nNetworkIPAddressInitiator: " + networkIPAddressInitiator + "\nResourceResponseSize:"
+				+ requestResponseSize + "\nSubnetIdInitiator: " + subnetIdInitiator + "\nSubnetIdActor: "
+				+ subnetIdActor + "\nSubnetIdTarget: " + subnetIdTarget + "\nScore: " + score;
+	}
+
 	public static void main(String[] args) {
 
 		try { // opening connection to HANA db
@@ -50,40 +59,82 @@ public class LogEvent {
 			System.err.println("Error: Connection Failed");
 			return;
 		}
-		// todo get log to analysis, do something with the result! -> score
+		// todo get log to analyse, do something with the result! -> score
 		// test data =======>
 		LogEvent logEvent = new LogEvent("20.01.2018 03:00:00.0", "$T3/000", "552F9FEC6D382BA3E10000000A4CF109", "",
 				"33.76.141.255", 789, "BF96E0572011F351E11700000A600446", "BF96E0572011F351E11700000A600446", null,
 				null, "33.76.141.50");
-		// logEvent.analysisLogEventAPT();
-		logEvent.analysisUnusualPortscanning();
+		System.out.println("Fake example:");
+		logEvent.analysisLogEventAPT();
+		// logEvent.analysisUnusualPortscanning();
 		System.out.println("Score: " + logEvent.score);
 		// <======
+
+		LogEvent[] realLogEvents = createLogEvents(5);
+		for (int i = 0; i < realLogEvents.length; i++) {
+			System.out.println("\nNew LogEvent:");
+			realLogEvents[i].analysisLogEventAPT();
+			// System.out.println(realLogEvents[i].score);
+		}
+	}
+
+	public static LogEvent[] createLogEvents(int numberOfLogs) {
+		LogEvent[] logEvents = new LogEvent[numberOfLogs];
+		try {
+			Statement stmt = connection.createStatement();
+
+			ResultSet resultSet = stmt.executeQuery("SELECT TOP " + numberOfLogs
+					+ " \"Timestamp\", \"SystemIdActor\", CAST(\"UserIdActing\" AS VARCHAR), \"NetworkHostnameTarget\","
+					+ "\"NetworkIPAddressTarget\", \"ResourceResponseSize\", \"NetworkSubnetIdInitiator\", \"NetworkSubnetIdActor\", "
+					+ "\"NetworkSubnetIdTarget\",    \"NetworkIPAddressActor\", \"NetworkIPAddressInitiator\", CAST(\"Id\" AS VARCHAR) "
+					+ "FROM \"SAP_SEC_MON\".\"sap.secmon.db::Log.Events\" WHERE \"NetworkIPAddressTarget\" IS NOT NULL;");
+			for (int i = 0; i < logEvents.length; i++) {
+				resultSet.next();
+				long responseSize;
+				if (resultSet.getString(6) == null) {
+					responseSize = 0;
+				} else {
+					responseSize = Long.parseLong(resultSet.getString(6));
+				}
+				logEvents[i] = new LogEvent(resultSet.getString(1), resultSet.getString(2), resultSet.getString(3),
+						resultSet.getString(4), resultSet.getString(5), responseSize, resultSet.getString(7),
+						resultSet.getString(8), resultSet.getString(9), resultSet.getString(10),
+						resultSet.getString(11));
+			}
+
+		} catch (SQLException e) {
+			System.err.println("Error: Query  Failed");
+		}
+		for (int i = 0; i < logEvents.length; i++) {
+			System.out.println(logEvents[i]);
+		}
+		return logEvents;
 	}
 
 	public int analysisLogEventAPT() {
 		if (analysisUnusualProtocol())
 			score++;
-		System.out.println(score);
+		System.out.println(score + ", protocol");
 		if (analysisUnusualSystem())
 			score++;
-		System.out.println(score);
+		System.out.println(score + ", system");
 		if (analysisUnusualTime())
 			score++;
-		System.out.println(score);
+		System.out.println(score + ", time");
 		if (analysisUnusualHostOrIp())
 			score++;
-		System.out.println(score);
+		System.out.println(score + ", host&/ IP");
 		if (requestResponseSize != 0) {
 			if (analysisUnusuallyLowNumberOfBytes())
 				score++;
 		}
-		System.out.println(score);
+		System.out.println(score + ", bytes");
 		if (analysisUnusualSubnetConnection())
 			score++;
-		System.out.println(score);
+		System.out.println(score + ",subnet");
 		if (analysisUnusualPortscanning())
 			score++;
+		System.out.println(score + ", portscanning");
 
 		return score;
 	}
@@ -187,7 +238,7 @@ public class LogEvent {
 
 		if (connection != null) {
 			try {
-				if (networkIPAddressTarget != null && networkHostnameTarget == "") {
+				if (networkIPAddressTarget != null && networkHostnameTarget == null) {
 
 					Statement stmt = connection.createStatement();
 					ResultSet resultSet = stmt.executeQuery(
@@ -205,13 +256,13 @@ public class LogEvent {
 						unusualHost = true;
 					}
 
-				} else if (networkIPAddressTarget == "" && networkHostnameTarget != null) {
+				} else if (networkIPAddressTarget == null && networkHostnameTarget != null) {
 
 					Statement stmt = connection.createStatement();
 					ResultSet resultSet = stmt.executeQuery(
 							"SELECT COUNT(\"UserIdActing\") FROM \"SAP_SEC_MON\".\"sap.secmon.db::Log.Events\" "
 									+ "WHERE \"UserIdActing\" = '" + userIdActor
-									+ "' AND \"NetworkIPAddressTarget\" IS NULL");
+									+ "' AND \"NetworkIPAddressTarget\" IS NULL AND \"NetworkHostnameTarget\" IS NULL");
 					resultSet.next();
 					numberOfFormerConnections = Long.parseLong(resultSet.getString(1));
 					// System.out.println(numberOfFormerConnections);
@@ -241,7 +292,7 @@ public class LogEvent {
 					}
 
 				} else {
-					System.err.println("Failed, no IP Address or Hostname.");
+					System.err.println("Failed, no IP Address and/or Hostname.");
 				}
 
 			} catch (SQLException e) {
@@ -379,11 +430,11 @@ public class LogEvent {
 						if (networkIPAddressActor != null) {
 							return this._checkUnusualPortscanning("actor", stmt);
 						} else {
-							System.out.println("IP analysis impossible: actor and initiator IP is missing.");
+							System.err.println("IP analysis impossible: actor and initiator IP is missing.");
 						}
 					}
 				} else {
-					System.out.println("IP analysis impossible: target IP is missing.");
+					System.err.println("IP analysis impossible: target IP is missing.");
 				}
 
 			} catch (SQLException e) {
@@ -410,7 +461,7 @@ public class LogEvent {
 			ipName = "NetworkIPAddressInitiator";
 			comparableIPAddress = networkIPAddressInitiator;
 		} else {
-			System.err.println("Error: ipAddress does not conatain \"actor\" or \"initiator\"");
+			System.err.println("Error: ipAddress does not contain \"actor\" or \"initiator\"");
 		}
 
 		//
@@ -451,12 +502,16 @@ public class LogEvent {
 
 }
 
-//// Code Depot jana:
-// String[] ip_parts = networkIPAddressInitiator.split(".");
-// System.out.println(ip_parts);
-// String networkIP = ip_parts[0] + "." + ip_parts[1] + "." + ip_parts[2];
-// System.out.println(networkIP);
-// Statement stmt = connection.createStatement();
-// ResultSet resultSet = stmt.executeQuery("SELECT * FROM
-//// \"SAP_SEC_MON\".\"sap.secmon.db::Log.Events\"");
-// resultSet.next();
+// // while (resultSet.next()) {
+// // for (int i = 0; i <= resultSet.getMetaData().getColumnCount();
+// // i++) {
+// // if (i > 0) {
+// // String columnValue = resultSet.getString(i);
+// // System.out.print(resultSet.getMetaData().getColumnName(i) + ": "
+// // + columnValue);
+// // System.out.print(", ");
+// //
+// // }
+// // System.out.println("");
+// // }
+// // }
