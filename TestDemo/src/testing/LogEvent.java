@@ -60,6 +60,7 @@ public class LogEvent {
 			System.err.println("Error: Connection Failed");
 			return;
 		}
+		// testing starts here, not needed when used productively?!
 		// fake test data =======>
 		// LogEvent logEvent = new LogEvent(java.util.Date("2018-01-20
 		// 03:00:00.000000000"), "$T3/000", "552F9FEC6D382BA3E10000000A4CF109",
@@ -229,7 +230,11 @@ public class LogEvent {
 								+ "\"SAP_SEC_MON\".\"sap.secmon.db::Log.Events\".\"UserIdActing\" = '" + userIdActor
 								+ "' AND"
 								+ "\"SAP_SEC_MON\".\"sap.secmon.db::KnowledgeBase.LogEntryType\".\"eventName.name\" = 'UserLogon' AND "
-								+ "\"SAP_SEC_MON\".\"sap.secmon.db::Log.Events\".\"Timestamp\" BETWEEN '01.11.2017 00:00:00.0' AND '06.02.2018 00:00:00.0'"
+								+ "\"SAP_SEC_MON\".\"sap.secmon.db::Log.Events\".\"Timestamp\" BETWEEN '"
+								+ this.convertToDatabaseColumn(timeStamp.minusMonths(3)) + "' AND '"
+								+ this.convertToDatabaseColumn(timeStamp) + "'"
+								// '01.11.2017 00:00:00.0' AND '06.02.2018
+								// 00:00:00.0'"
 								+ "GROUP BY \"SAP_SEC_MON\".\"sap.secmon.db::Log.Events\".\"SystemIdActor\","
 								+ "\"SAP_SEC_MON\".\"sap.secmon.db::Log.Events\".\"Timestamp\", \"SAP_SEC_MON\".\"sap.secmon.db::Log.Events\".\"UserIdActing\","
 								+ "\"SAP_SEC_MON\".\"sap.secmon.db::KnowledgeBase.LogEntryType\".\"eventName.name\"");
@@ -433,18 +438,18 @@ public class LogEvent {
 		return unusualSubnetConnection;
 	}
 
-	private boolean analysisUnusualPortscanning() { // todo check whether these
-													// IPs frequently have
-													// contact and not only
-													// once, check for subnet as
-													// well
+	private boolean analysisUnusualPortscanning() {
+		/*
+		 * todo check whether these IPs frequently have contact and not only
+		 * once, check for subnet as well
+		 */
 		boolean unusualPortScanning = false;
 		if (connection != null) {
 			try {
 				if (networkIPAddressTarget != null) {
 					Statement stmt = connection.createStatement();
 					if (networkIPAddressInitiator != null) {
-						// ceck for portscanning from the initiator IP address
+						// check for portscanning from the initiator IP address
 						if (this._checkUnusualPortscanning("initiator", stmt)) {
 							// portscanning from the initiator IP
 							unusualPortScanning = true;
@@ -518,7 +523,9 @@ public class LogEvent {
 							+ comparableIPAddress + "' AND SUBSTRING(\"NetworkIPAddressTarget\", 0, " + substring_length
 							+ ") = '" + ip_substring + "' AND SUBSTRING(\"NetworkIPAddressTarget\", "
 							+ (substring_length + 1) + ", " + deviceIPLength + ") <> '" + ip_compare[3]
-							+ "' AND \"Timestamp\" BETWEEN '24.01.2018 00:00:00.0' AND '31.01.2018 00:00:00.0'");
+							+ "' AND \"Timestamp\" BETWEEN '" + this.convertToDatabaseColumn(timeStamp.minusWeeks(1))
+							+ "' AND '" + this.convertToDatabaseColumn(timeStamp) + "';");
+					// 24.01.2018 00:00:00.0' AND '31.01.2018 00:00:00.0'");
 					resultSet.next();
 					if (Integer.parseInt(resultSet.getString(1)) > 4) {
 						unusualPortScanning = true;
@@ -572,7 +579,10 @@ public class LogEvent {
 							+ comparableIPAddress + "' AND SUBSTRING(\"NetworkIPAddressTarget\", 0, " + substring_length
 							+ ") = '" + ip_substring + "' AND SUBSTRING(\"NetworkIPAddressTarget\", "
 							+ (substring_length + 1) + ", " + deviceIPLength + ") <> '" + ip_device
-							+ "' AND \"Timestamp\" BETWEEN '24.01.2018 00:00:00.0' AND '31.01.2018 00:00:00.0'");
+							+ "' AND \"Timestamp\" BETWEEN '" + this.convertToDatabaseColumn(timeStamp.minusWeeks(1))
+							+ "' AND '" + this.convertToDatabaseColumn(timeStamp) + "';");
+					// BETWEEN '24.01.2018 00:00:00.0' AND '31.01.2018
+					// 00:00:00.0'");
 					resultSet.next();
 					if (Integer.parseInt(resultSet.getString(1)) > 4) {
 						unusualPortScanning = true;
