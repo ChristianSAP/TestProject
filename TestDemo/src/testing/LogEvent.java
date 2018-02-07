@@ -2,8 +2,6 @@ package testing;
 
 import java.sql.*;
 import java.time.LocalDateTime;
-import java.util.Calendar;
-import java.sql.Timestamp;
 
 public class LogEvent {
 	// variables for HANA db connection
@@ -48,7 +46,7 @@ public class LogEvent {
 				+ networkIPAddressTarget + "\nNatworkIPAddressActor: " + networkIPAddressActor
 				+ "\nNetworkIPAddressInitiator: " + networkIPAddressInitiator + "\nResourceResponseSize:"
 				+ requestResponseSize + "\nSubnetIdInitiator: " + subnetIdInitiator + "\nSubnetIdActor: "
-				+ subnetIdActor + "\nSubnetIdTarget: " + subnetIdTarget + "\nScore: " + score + "]";
+				+ subnetIdActor + "\nSubnetIdTarget: " + subnetIdTarget + "\nScore: " + score + "]\n";
 	}
 
 	public static void main(String[] args) {
@@ -98,6 +96,8 @@ public class LogEvent {
 		return null;
 	}
 
+	// it's necessary to check whether '%s' or similar wrong mapped data is
+	// written in the table
 	public static LogEvent[] createLogEvents(int numberOfLogs) {
 		LogEvent[] logEvents = new LogEvent[numberOfLogs];
 		try {
@@ -107,7 +107,7 @@ public class LogEvent {
 					+ " \"Timestamp\", \"SystemIdActor\", CAST(\"UserIdActing\" AS VARCHAR), \"NetworkHostnameTarget\","
 					+ "\"NetworkIPAddressTarget\", \"ResourceResponseSize\", CAST(\"NetworkSubnetIdInitiator\" AS VARCHAR), CAST(\"NetworkSubnetIdActor\" AS VARCHAR), "
 					+ "CAST(\"NetworkSubnetIdTarget\" AS VARCHAR),    \"NetworkIPAddressActor\", \"NetworkIPAddressInitiator\", CAST(\"Id\" AS VARCHAR) "
-					+ "FROM \"SAP_SEC_MON\".\"sap.secmon.db::Log.Events\" WHERE \"NetworkIPAddressTarget\" IS NOT NULL;");
+					+ "FROM \"SAP_SEC_MON\".\"sap.secmon.db::Log.Events\" WHERE \"NetworkIPAddressTarget\" IS NOT NULL AND SUBSTRING(\"NetworkIPAddressTarget\", 0, 1) <> '%' AND SUBSTRING(\"NetworkIPAddressTarget\", 0, 1) <> '(' AND \"SystemIdActor\" = '$T3/000';");
 			// AND SUBSTRING(\"NetworkIPAddressTarget\", 0, 2) <> 'fe'
 			for (int i = 0; i < logEvents.length; i++) {
 				resultSet.next();
@@ -280,7 +280,7 @@ public class LogEvent {
 									+ "' AND \"NetworkHostnameTarget\" IS NULL");
 					resultSet.next();
 					numberOfFormerConnections = Long.parseLong(resultSet.getString(1));
-					// System.out.println(numberOfFormerConnections);
+					 System.out.println(numberOfFormerConnections);
 
 					if (numberOfFormerConnections > 0) {
 						unusualHost = false;
@@ -298,7 +298,7 @@ public class LogEvent {
 									+ networkHostnameTarget + "'");
 					resultSet.next();
 					numberOfFormerConnections = Long.parseLong(resultSet.getString(1));
-					// System.out.println(numberOfFormerConnections);
+					 System.out.println(numberOfFormerConnections);
 
 					if (numberOfFormerConnections > 0) {
 						unusualHost = false;
@@ -313,10 +313,11 @@ public class LogEvent {
 							"SELECT COUNT(\"UserIdActing\") FROM \"SAP_SEC_MON\".\"sap.secmon.db::Log.Events\" "
 									+ "WHERE \"UserIdActing\" = '" + userIdActor
 									+ "' AND \"NetworkIPAddressTarget\" = '" + networkIPAddressTarget
-									+ "' AND \"NetworkHostnameTarget\" IS NULL");
+									+ "' AND \"NetworkHostnameTarget\" = '" + networkHostnameTarget + "';");
 
+					resultSet.next();
 					numberOfFormerConnections = Long.parseLong(resultSet.getString(1));
-					// System.out.println(numberOfFormerConnections);
+					 System.out.println(numberOfFormerConnections);
 
 					if (numberOfFormerConnections > 0) {
 						unusualHost = false;
