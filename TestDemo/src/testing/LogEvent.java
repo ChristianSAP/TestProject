@@ -118,7 +118,7 @@ public class LogEvent {
 				if (resultSet.getString(6) == null) {
 					responseSize = 0;
 				} else {
-					responseSize = Long.parseLong(resultSet.getString(6));
+					responseSize = resultSet.getLong(6);
 				}
 				logEvents[i] = new LogEvent(resultSet.getTimestamp(1), resultSet.getString(2), resultSet.getString(3),
 						resultSet.getString(4), resultSet.getString(5), responseSize, resultSet.getString(7),
@@ -183,7 +183,7 @@ public class LogEvent {
 								+ this.convertToDatabaseColumn(timeStamp) + "';");
 				// '31.01.2018 12:00:00.0' AND '31.01.2018 14:00:00.0'");
 				resultSet.next();
-				numberOfLogsTwoHours = Integer.parseInt(resultSet.getString(1));
+				numberOfLogsTwoHours = resultSet.getInt(1);
 				medianTwoHours = (numberOfLogsTwoHours / 120) * 0.5;
 
 				ResultSet resultSetLast10Minutes = stmt.executeQuery(
@@ -193,7 +193,7 @@ public class LogEvent {
 								+ this.convertToDatabaseColumn(timeStamp) + "';");
 				// '31.01.2018 13:50:00.0' AND '31.01.2018 14:00:00.0'");
 				resultSetLast10Minutes.next();
-				numberOfLogsTenMinutes = Integer.parseInt(resultSetLast10Minutes.getString(1));
+				numberOfLogsTenMinutes = resultSetLast10Minutes.getInt(1);
 				medianTenMinutes = numberOfLogsTenMinutes / 10;
 
 				if (medianTenMinutes < medianTwoHours) {
@@ -244,7 +244,7 @@ public class LogEvent {
 				// numberOfLogins = Integer.parseInt(resultSet.getString(1));
 				resultSet.next();
 				// System.out.println(resultSet.getInt(1));
-				numberOfLogins = Long.parseLong(resultSet.getString(1));
+				numberOfLogins = resultSet.getLong(1);
 				System.out.println(numberOfLogins);
 				if (numberOfLogins > 0) {
 					unusualSystem = false;
@@ -282,7 +282,7 @@ public class LogEvent {
 									+ "' AND \"NetworkIPAddressTarget\" = '" + networkIPAddressTarget
 									+ "' AND \"NetworkHostnameTarget\" IS NULL");
 					resultSet.next();
-					numberOfFormerConnections = Long.parseLong(resultSet.getString(1));
+					numberOfFormerConnections = resultSet.getLong(1);
 					System.out.println(numberOfFormerConnections);
 
 					if (numberOfFormerConnections > 0) {
@@ -300,7 +300,7 @@ public class LogEvent {
 									+ "' AND \"NetworkIPAddressTarget\" IS NULL AND \"NetworkHostnameTarget\" = '"
 									+ networkHostnameTarget + "'");
 					resultSet.next();
-					numberOfFormerConnections = Long.parseLong(resultSet.getString(1));
+					numberOfFormerConnections = resultSet.getLong(1);
 					System.out.println(numberOfFormerConnections);
 
 					if (numberOfFormerConnections > 0) {
@@ -319,7 +319,7 @@ public class LogEvent {
 									+ "' AND \"NetworkHostnameTarget\" = '" + networkHostnameTarget + "';");
 
 					resultSet.next();
-					numberOfFormerConnections = Long.parseLong(resultSet.getString(1));
+					numberOfFormerConnections = resultSet.getLong(1);
 					System.out.println(numberOfFormerConnections);
 
 					if (numberOfFormerConnections > 0) {
@@ -352,7 +352,7 @@ public class LogEvent {
 								+ " AND \"ResourceResponseSize\" IS NOT NULL");
 				// - STDDEV(\"ResourceResponseSize\")
 				resultSet.next();
-				if (this.requestResponseSize <= Double.parseDouble(resultSet.getString(1))) {
+				if (this.requestResponseSize <= resultSet.getDouble(1)) {
 					lowNumberOfBytes = true;
 				} else {
 					lowNumberOfBytes = false;
@@ -378,7 +378,7 @@ public class LogEvent {
 									+ "WHERE  \"UserIdActing\" = '" + userIdActor
 									+ "' AND \"NetworkSubnetIdInitiator\" = '" + subnetIdInitiator + "'");
 					resultSet.next();
-					if (Integer.parseInt(resultSet.getString(1)) < 2) {
+					if (resultSet.getInt(1) < 2) {
 						unusualSubnetConnection = true;
 						System.out.println("case 1");
 					} else {
@@ -392,7 +392,7 @@ public class LogEvent {
 											+ "' AND \"NetworkSubnetIdInitiator\" = '" + subnetIdInitiator
 											+ "' AND \"NetworkSubnetIdActor\" = '" + subnetIdActor + "'");
 							resultSetCase2.next();
-							if (Integer.parseInt(resultSetCase2.getString(1)) < 2) {
+							if (resultSetCase2.getInt(1) < 2) {
 								unusualSubnetConnection = true;
 								System.out.println("case 2");
 							} else {
@@ -408,7 +408,7 @@ public class LogEvent {
 											+ "' AND \"NetworkSubnetIdInitiator\" = '" + subnetIdInitiator
 											+ "' AND \"NetworkSubnetIdTarget\" = '" + subnetIdTarget + "'");
 							resultSetCase3.next();
-							if (Integer.parseInt(resultSetCase3.getString(1)) < 2) {
+							if (resultSetCase3.getInt(1) < 2) {
 								unusualSubnetConnection = true;
 								System.out.println("case 3");
 							} else {
@@ -422,7 +422,7 @@ public class LogEvent {
 													+ "' AND \"NetworkSubnetIdTarget\" = '" + subnetIdTarget + "'"
 													+ " AND \"NetworkSubnetIdActor\" = '" + subnetIdActor + "'");
 									resultSetCase4.next();
-									if (Integer.parseInt(resultSetCase4.getString(1)) < 2) {
+									if (resultSetCase4.getInt(1) < 2) {
 										unusualSubnetConnection = true;
 										System.out.println("case 4");
 									} else {
@@ -534,7 +534,7 @@ public class LogEvent {
 							+ "' AND '" + this.convertToDatabaseColumn(timeStamp) + "';");
 					// 24.01.2018 00:00:00.0' AND '31.01.2018 00:00:00.0'");
 					resultSet.next();
-					if (Integer.parseInt(resultSet.getString(1)) > 4) {
+					if (resultSet.getInt(1) > 4) {
 						unusualPortScanning = true;
 					} else {
 						unusualPortScanning = false;
@@ -593,7 +593,7 @@ public class LogEvent {
 					// BETWEEN '24.01.2018 00:00:00.0' AND '31.01.2018
 					// 00:00:00.0'");
 					resultSet.next();
-					if (Integer.parseInt(resultSet.getString(1)) > 4) {
+					if (resultSet.getInt(1) > 4) {
 						unusualPortScanning = true;
 					} else {
 						unusualPortScanning = false;
