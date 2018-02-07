@@ -107,7 +107,10 @@ public class LogEvent {
 					+ " \"Timestamp\", \"SystemIdActor\", CAST(\"UserIdActing\" AS VARCHAR), \"NetworkHostnameTarget\","
 					+ "\"NetworkIPAddressTarget\", \"ResourceResponseSize\", CAST(\"NetworkSubnetIdInitiator\" AS VARCHAR), CAST(\"NetworkSubnetIdActor\" AS VARCHAR), "
 					+ "CAST(\"NetworkSubnetIdTarget\" AS VARCHAR),    \"NetworkIPAddressActor\", \"NetworkIPAddressInitiator\", CAST(\"Id\" AS VARCHAR) "
-					+ "FROM \"SAP_SEC_MON\".\"sap.secmon.db::Log.Events\" WHERE \"NetworkIPAddressTarget\" IS NOT NULL AND SUBSTRING(\"NetworkIPAddressTarget\", 0, 1) <> '%' AND SUBSTRING(\"NetworkIPAddressTarget\", 0, 1) <> '(' AND \"SystemIdActor\" = '$T3/000';");
+					+ "FROM \"SAP_SEC_MON\".\"sap.secmon.db::Log.Events\" WHERE \"NetworkIPAddressTarget\" IS NOT NULL AND SUBSTRING(\"NetworkIPAddressTarget\", 0, 1) <> '%'"
+					+ "AND SUBSTRING(\"NetworkIPAddressTarget\", 0, 1) <> '(' AND SUBSTRING(\"NetworkIPAddressTarget\", 0, 1) <> '%' AND \"SystemIdActor\" = '$T3/000'");
+			// = 'f' AND SUBSTRING(\"NetworkIPAddressInitiator\", 0, 1) = 'f'");
+			// <> '(' AND \"SystemIdActor\" = '$T3/000';");
 			// AND SUBSTRING(\"NetworkIPAddressTarget\", 0, 2) <> 'fe'
 			for (int i = 0; i < logEvents.length; i++) {
 				resultSet.next();
@@ -280,7 +283,7 @@ public class LogEvent {
 									+ "' AND \"NetworkHostnameTarget\" IS NULL");
 					resultSet.next();
 					numberOfFormerConnections = Long.parseLong(resultSet.getString(1));
-					 System.out.println(numberOfFormerConnections);
+					System.out.println(numberOfFormerConnections);
 
 					if (numberOfFormerConnections > 0) {
 						unusualHost = false;
@@ -298,7 +301,7 @@ public class LogEvent {
 									+ networkHostnameTarget + "'");
 					resultSet.next();
 					numberOfFormerConnections = Long.parseLong(resultSet.getString(1));
-					 System.out.println(numberOfFormerConnections);
+					System.out.println(numberOfFormerConnections);
 
 					if (numberOfFormerConnections > 0) {
 						unusualHost = false;
@@ -317,7 +320,7 @@ public class LogEvent {
 
 					resultSet.next();
 					numberOfFormerConnections = Long.parseLong(resultSet.getString(1));
-					 System.out.println(numberOfFormerConnections);
+					System.out.println(numberOfFormerConnections);
 
 					if (numberOfFormerConnections > 0) {
 						unusualHost = false;
@@ -484,6 +487,7 @@ public class LogEvent {
 	}
 
 	// ipAddress should either contain "actor" or "initiator"
+	// transform ipv4 address into ipv6 adress
 	private boolean _checkUnusualPortscanning(String ipAddress, Statement stmt) {
 		boolean unusualPortScanning = false;
 		String ipName = null;
@@ -491,20 +495,22 @@ public class LogEvent {
 		String[] ip_compare = null;
 		String[] ip_target;
 
-		// check whether the Ip is in Ipv4 or ipv6 format
+		// check whether the Target Ip is in Ipv4 or ipv6 format
 		if (networkIPAddressTarget.length() <= 15) { // IPv4
 			System.out.println("IPv4");
 			ip_target = networkIPAddressTarget.split("\\.");
-			if (ipAddress == "actor") {
+			if (ipAddress == "actor" && networkIPAddressActor.length() <= 15) {
 				ip_compare = networkIPAddressActor.split("\\.");
 				ipName = "NetworkIPAddressActor";
 				comparableIPAddress = networkIPAddressActor;
-			} else if (ipAddress == "initiator") {
+			} else if (ipAddress == "initiator" && networkIPAddressInitiator.length() <= 15) {
 				ip_compare = networkIPAddressInitiator.split("\\.");
 				ipName = "NetworkIPAddressInitiator";
 				comparableIPAddress = networkIPAddressInitiator;
 			} else {
-				System.err.println("Error: ipAddress does not contain \"actor\" or \"initiator\"");
+				System.err.println(
+						"Error: ipAddress does not contain \"actor\" or \"initiator\" or has a different IP format");
+				return false;
 			}
 
 			//
@@ -544,16 +550,18 @@ public class LogEvent {
 		} else { // IPv6
 			System.out.println("IPv6");
 			ip_target = networkIPAddressTarget.split(":");
-			if (ipAddress == "actor") {
+			if (ipAddress == "actor" && networkIPAddressActor.length() > 15) {
 				ip_compare = networkIPAddressActor.split(":");
 				ipName = "NetworkIPAddressActor";
 				comparableIPAddress = networkIPAddressActor;
-			} else if (ipAddress == "initiator") {
+			} else if (ipAddress == "initiator" && networkIPAddressInitiator.length() > 15) {
 				ip_compare = networkIPAddressInitiator.split(":");
 				ipName = "NetworkIPAddressInitiator";
 				comparableIPAddress = networkIPAddressInitiator;
 			} else {
-				System.err.println("Error: ipAddress does not contain \"actor\" or \"initiator\"");
+				System.err.println(
+						"Error: ipAddress does not contain \"actor\" or \"initiator\" or has a different IP format");
+				return false;
 			}
 			// ============== //this is probably working, test!
 			if (Integer.parseInt(ip_compare[0]) == Integer.parseInt(ip_target[0])
@@ -606,16 +614,16 @@ public class LogEvent {
 
 }
 
-// // while (resultSet.next()) {
-// // for (int i = 0; i <= resultSet.getMetaData().getColumnCount();
-// // i++) {
-// // if (i > 0) {
-// // String columnValue = resultSet.getString(i);
-// // System.out.print(resultSet.getMetaData().getColumnName(i) + ": "
-// // + columnValue);
-// // System.out.print(", ");
-// //
-// // }
-// // System.out.println("");
-// // }
-// // }
+// while (resultSet.next()) {
+// for (int i = 0; i <= resultSet.getMetaData().getColumnCount();
+// i++) {
+// if (i > 0) {
+// String columnValue = resultSet.getString(i);
+// System.out.print(resultSet.getMetaData().getColumnName(i) + ": "
+// + columnValue);
+// System.out.print(", ");
+//
+// }
+// System.out.println("");
+// }
+// }
