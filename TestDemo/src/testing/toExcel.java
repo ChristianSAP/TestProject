@@ -1,8 +1,12 @@
 package testing;
 
 import java.io.*;
-import java.sql.Timestamp;
 
+/**
+ * this class is 100% useless and was created in the process of programming the class LogOutageDetection
+ * @author D067608
+ *
+ */
 public class toExcel {
 	public static void main(String[] args) {
 		File file = new File("C:/Users/D067608/git/TestProject2/LogFalloutData.csv");

@@ -1,3 +1,15 @@
-Timestamp;TechnicalLogColumnName;LogEvent;TimeOfFallout;TimeOfResurrection;Score;Okay;Reason
-2018-02-09 15:51:06.334;Streaming Proxy;ReadAccessLog;;;97;
-2018-02-09 15:51:06.335;Streaming Proxy;HttpServerLog;;;2;
+Timestamp;TechnicalLogColumnName;LogEvent;TimeOfFallout;TimeOfRecovery;Score;Okay;Reason
+2018-02-09 16:35:35.891;Streaming Proxy;SAPKernel;2018-02-09 15:27:50.699000000;;;;
+2018-02-09 16:35:35.901;MyLogCollectorName;WinEventLog:Security;2018-02-09 14:58:34.000000000;;;;
+2018-02-09 16:35:35.902;Streaming Proxy;ReadAccessLog;2018-02-09 15:21:41.534000000;;;;
+2018-02-09 16:35:35.903;MyLogCollectorName;WinEventLog:Application;2018-02-09 14:58:32.000000000;;;;
+2018-02-09 16:35:35.904;Streaming Proxy;HttpServerLog;2018-02-09 15:10:02.000000000;;;;
+2018-02-09 16:35:35.905;MyLogCollectorName;WinEventLog:System;2018-02-09 14:58:32.000000000;;;;
+2018-02-09 16:35:35.944;Streaming Proxy;UserChangeLog;;2018-02-09 15:32:50.000000000;;;
+2018-02-09 16:35:40.881;Streaming Proxy;SAPKernel;2018-02-09 15:27:50.699000000;;;;
+2018-02-09 16:35:40.882;MyLogCollectorName;WinEventLog:Security;2018-02-09 14:58:34.000000000;;;;
+2018-02-09 16:35:40.883;Streaming Proxy;ReadAccessLog;2018-02-09 15:21:41.534000000;;;;
+2018-02-09 16:35:40.884;MyLogCollectorName;WinEventLog:Application;2018-02-09 14:58:32.000000000;;;;
+2018-02-09 16:35:40.885;Streaming Proxy;HttpServerLog;2018-02-09 15:10:02.000000000;;;;
+2018-02-09 16:35:40.886;MyLogCollectorName;WinEventLog:System;2018-02-09 14:58:32.000000000;;;;
+2018-02-09 16:35:40.93;Streaming Proxy;UserChangeLog;;2018-02-09 15:32:50.000000000;;;

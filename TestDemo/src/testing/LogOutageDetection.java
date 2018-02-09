@@ -20,8 +20,9 @@ public class LogOutageDetection {
 	private final static ScheduledExecutorService scheduler = Executors.newScheduledThreadPool(1);
 	static Runnable execution = null;
 	static ScheduledFuture<?> handler = null;
+	static Writer writer;
 
-	public static void main(String[] args) throws InterruptedException {
+	public static void main(String[] args) throws InterruptedException, IOException {
 		// open connection to HANA db
 		try {
 			connection = DriverManager.getConnection("jdbc:sap://ld3796.wdf.sap.corp:30015/?autocommit=false", myname,
@@ -31,14 +32,14 @@ public class LogOutageDetection {
 			return;
 		}
 
-		// execute executeLogOutageDetection every 5 Minutes (Seconds)
 		execution = new Runnable() {
 			public void run() {
 				try {
-					executeLogOutageDetection();
+					executeLogOutageDetection(getCSVFileWriter());
 				} catch (IOException e) {
 					// TODO Auto-generated catch block
 					e.printStackTrace();
+					System.err.println("Error in method: " + e.getMessage());
 				}
 			}
 		};
@@ -47,29 +48,21 @@ public class LogOutageDetection {
 
 		scheduler.schedule(new Runnable() {
 			public void run() {
+
 				handler.cancel(true);
 			}
 		}, 60, SECONDS);
 
 	}
 
-	public static void executeLogOutageDetection() throws IOException {
-		// get writer to write on CSV file LogFalloutData
-		Writer writer = null;
-		try {
-			writer = getCSVFileWriter();
-		} catch (IOException ioe) {
-			System.err.println("Error: Cannot get file: " + ioe.getMessage());
-		}
+	public static void executeLogOutageDetection(Writer writer) throws IOException {
 
-		// write header lines in CSV file
-		writer.write("Timestamp;TechnicalLogColumnName;LogEvent;TimeOfFallout;TimeOfResurrection;Score;Okay;Reason");
 		try {
 			Statement stmt = connection.createStatement();
 			// check for log outages
 			System.out.println("Log Outages:");
 			ResultSet resultSet = stmt.executeQuery(
-					"select distinct( concat( \"LE\".\"EventLogType\", concat( ',', \"LE\".\"TechnicalLogCollectorName\" ) ) ), count(*) "
+					"select distinct( concat( \"LE\".\"EventLogType\", concat( ',', \"LE\".\"TechnicalLogCollectorName\" ) ) ), count(*), MAX(\"LE\".\"Timestamp\") "
 							+ "from \"SAP_SEC_MON\".\"sap.secmon.db::Log.Events\" as \"LE\" "
 							+ "where \"LE\".\"Timestamp\" between add_seconds ( CURRENT_UTCTIMESTAMP, -3600 ) and add_seconds ( CURRENT_UTCTIMESTAMP, -300 ) "
 							+ "and \"LE\".\"EventLogType\" is not null "
@@ -85,19 +78,19 @@ public class LogOutageDetection {
 							+ "order by count(*) desc");
 
 			while (resultSet.next()) {
+				// write data to csv file
 				Timestamp timestamp = new Timestamp(System.currentTimeMillis());
-				writer.write("\n" + timestamp + ";");
+				writer.write(timestamp + ";");
+				String[] columnValue = resultSet.getString(1).split(",");
+				writer.write(columnValue[1] + ";" + columnValue[0] + ";");
+				String TSofFallout = resultSet.getString(3);
+				writer.write(TSofFallout + ";");
+				String score = resultSet.getString(2);
+				writer.write(";;;\n");
+				// print out on system
 				for (int i = 1; i <= resultSet.getMetaData().getColumnCount(); i++) {
-					if (i == 1) {
-						String[] columnValue = resultSet.getString(i).split(",");
-						writer.write(columnValue[1] + ";" + columnValue[0] + ";");
-					} else {
-						String columnValue = resultSet.getString(i);
-						writer.write(";;" + columnValue + ";");
-					}
-
-					String columnValue = resultSet.getString(i);
-					System.out.println(columnValue);
+					String columnValue11 = resultSet.getString(i);
+					System.out.println(columnValue11);
 
 					// System.out.println("");
 				}
@@ -106,7 +99,7 @@ public class LogOutageDetection {
 			// check for log comebacks
 			System.out.println("\nLog Comebacks:");
 			ResultSet resultSetCB = stmt.executeQuery(
-					"select distinct( concat( \"LE\".\"EventLogType\", concat( ',', \"LE\".\"TechnicalLogCollectorName\" ) ) ), count(*) "
+					"select distinct( concat( \"LE\".\"EventLogType\", concat( ',', \"LE\".\"TechnicalLogCollectorName\" ) ) ), count(*), MIN(\"LE\".\"Timestamp\")"
 							+ "from \"SAP_SEC_MON\".\"sap.secmon.db::Log.Events\" as \"LE\" "
 							+ "where \"LE\".\"Timestamp\" between add_seconds ( CURRENT_UTCTIMESTAMP, -300 ) and  CURRENT_UTCTIMESTAMP "
 							+ "and \"LE\".\"EventLogType\" is not null "
@@ -122,12 +115,18 @@ public class LogOutageDetection {
 							+ "order by count(*) desc");
 
 			while (resultSetCB.next()) {
-				for (int i = 0; i <= resultSetCB.getMetaData().getColumnCount(); i++) {
-					if (i > 0) {
-						String columnValue = resultSetCB.getString(i);
-						System.out.println(columnValue);
-
-					}
+				// save in CSV file
+				Timestamp timestamp = new Timestamp(System.currentTimeMillis());
+				writer.write(timestamp + ";");
+				String[] columnValue = resultSetCB.getString(1).split(",");
+				writer.write(columnValue[1] + ";" + columnValue[0] + ";");
+				String score = resultSetCB.getString(2);
+				String TSofResurrection = resultSetCB.getString(3);
+				writer.write(";" +TSofResurrection + ";;;\n");
+				// print out 
+				for (int i = 1; i <= resultSetCB.getMetaData().getColumnCount(); i++) {
+					String columnValue11 = resultSetCB.getString(i);
+					System.out.println(columnValue11);
 				}
 			}
 			System.out.println("################################################################");
@@ -136,11 +135,12 @@ public class LogOutageDetection {
 			System.out.println(e.getMessage());
 		}
 		writer.close();
+
 	}
 
 	public static Writer getCSVFileWriter() throws IOException {
 		File file = new File("C:/Users/D067608/git/TestProject2/LogFalloutData.csv");
-		FileWriter writer = new FileWriter(file);
+		FileWriter writer = new FileWriter(file, true);
 		return writer;
 	}
 
