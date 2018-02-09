@@ -3,6 +3,26 @@ package testing;
 import java.sql.*;
 import java.time.LocalDateTime;
 
+/**
+ * This class analyzes whether a log is unusual in a way that could give
+ * conclusions/indications about a possible APT/malware infection
+ * 
+ * @author D067608
+ * @version 07.02.2018
+ * 
+ */
+
+/*
+ * To Do: - windows log von servern subnetze qualifizieren direkte tcp -
+ * kommunikation: protokolle ausschließen, nachlesen was browser macht - insert
+ * ungewöhnliches protokoll bspw fdp - 2 routinen: letzte 2/3 minuten -> alle
+ * 2/3 minuten ausführen für vergangene zukunft - siehe Kommentare Quelltext -
+ * Loop Routine: alle 3 Minuten mit delay; while schleife in main, stoppbar
+ * machen (eg file erzeugen & überprüfen, ob dieses existiert. wenn ja dann
+ * löschen&stoppen) -> Konsolenbefehl starten, stoppen - Score: Indicator
+ * erzeugen (score > 3 oder machine learning) in Log.Events Tabelle mit
+ * "EventLogType" = 'Indicator'
+ */
 public class LogEvent {
 	// variables for HANA db connection
 	static Connection connection = null;
@@ -72,9 +92,9 @@ public class LogEvent {
 		// <======
 
 		// test with real logs =========>
-		LogEvent[] realLogEvents = createLogEvents(5);
+		LogEvent[] realLogEvents = createLogEvents(2);
 		for (int i = 0; i < realLogEvents.length; i++) {
-			System.out.println("\nNew LogEvent:");
+			System.out.println("\nNext LogEvent:");
 			realLogEvents[i].analysisLogEventAPT();
 			// System.out.println(realLogEvents[i].score);
 		}
@@ -96,8 +116,9 @@ public class LogEvent {
 		return null;
 	}
 
-	// it's necessary to check whether '%s' or similar wrong mapped data is
+	// it's necessary to check whether '%s' or similar wrongly mapped data is
 	// written in the table
+	// die letzten fünf minuten oder so anschauen
 	public static LogEvent[] createLogEvents(int numberOfLogs) {
 		LogEvent[] logEvents = new LogEvent[numberOfLogs];
 		try {
@@ -212,6 +233,7 @@ public class LogEvent {
 
 	// returns true, if the user has never successfully logged onto the system
 	// before
+	// erweiterung: unerfolgreiche anmeldung
 	private boolean analysisUnusualSystem() {
 		// todo also check failed logins?
 		boolean unusualSystem = false;
@@ -267,6 +289,10 @@ public class LogEvent {
 		return unusualProtocol;
 	}
 
+	// wenn der host später öfter genommen wird dann ist es nicht ungewöhnlich
+	// analyse für "älktere" daten, eg vor einer stunde/tag; vergangene zukunft;
+	// 3 wochen oder so in vergangenheit; ggf zusätzlich
+	// -> ist es plötzlich normal geworden?
 	private boolean analysisUnusualHostOrIp() {
 		boolean unusualHost = false;
 		long numberOfFormerConnections;
@@ -366,6 +392,8 @@ public class LogEvent {
 		return lowNumberOfBytes;
 	}
 
+	// wenns danach oft aufgerufen wird dann ist es nciht ungewöhnlich.
+	// t in der vergangenheit wählen für vergangene zukunft
 	private boolean analysisUnusualSubnetConnection() {
 		boolean unusualSubnetConnection = false;
 		if (connection != null) {
@@ -496,6 +524,9 @@ public class LogEvent {
 		String[] ip_target;
 
 		// check whether the Target Ip is in Ipv4 or ipv6 format
+		// muss man eigentlich noch nach herkunft gruppieren
+		// vergangene zukunft; gibts in der zukunft mehr als n wenn es jetzt in
+		// der vergangenheit nicht mehr als n gab
 		if (networkIPAddressTarget.length() <= 15) { // IPv4
 			System.out.println("IPv4");
 			ip_target = networkIPAddressTarget.split("\\.");
