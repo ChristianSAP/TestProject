@@ -1,0 +1,3 @@
+Timestamp;TechnicalLogColumnName;LogEvent;TimeOfFallout;TimeOfResurrection;Score;Okay;Reason
+2018-02-09 15:51:06.334;Streaming Proxy;ReadAccessLog;;;97;
+2018-02-09 15:51:06.335;Streaming Proxy;HttpServerLog;;;2;
