@@ -1,7 +1,17 @@
 package testing;
 
+import static java.util.concurrent.TimeUnit.MINUTES;
+
+import java.io.IOException;
 import java.sql.*;
+import java.time.Instant;
 import java.time.LocalDateTime;
+import java.time.ZoneId;
+import java.util.LinkedList;
+import java.util.List;
+import java.util.concurrent.Executors;
+import java.util.concurrent.ScheduledExecutorService;
+import java.util.concurrent.ScheduledFuture;
 
 /**
  * This class analyzes whether a log is unusual in a way that could give
@@ -13,21 +23,30 @@ import java.time.LocalDateTime;
  */
 
 /*
- * To Do: - windows log von servern subnetze qualifizieren direkte tcp -
+ * TODO: - windows log von servern subnetze qualifizieren direkte tcp -
  * kommunikation: protokolle ausschließen, nachlesen was browser macht - insert
- * ungewöhnliches protokoll bspw fdp - 2 routinen: letzte 2/3 minuten -> alle
- * 2/3 minuten ausführen für vergangene zukunft - siehe Kommentare Quelltext -
- * Loop Routine: alle 3 Minuten mit delay; while schleife in main, stoppbar
- * machen (eg file erzeugen & überprüfen, ob dieses existiert. wenn ja dann
- * löschen&stoppen) -> Konsolenbefehl starten, stoppen - Score: Indicator
- * erzeugen (score > 3 oder machine learning) in Log.Events Tabelle mit
- * "EventLogType" = 'Indicator'
+ * ungewöhnliches protokoll bspw fdp while schleife in main, stoppbar machen (eg
+ * file erzeugen & überprüfen, ob dieses existiert (aktuell einfah für zeit t
+ * gestarttet). wenn ja dann löschen&stoppen) -> Konsolenbefehl starten, stoppen
+ * ; check if numAnalyzed is incremented at correct times
+ * 
+ * erledigt: - 2 routinen: letzte 2/3 minuten -> alle 2/3 minuten ausführen für
+ * vergangene zukunft: wird alle 3 Minuten für die letzten 3 minuten ausgeführt
+ * - Loop Routine: alle 3 Minuten mit delay;
+ * 
+ * halb: - Score: Indicator erzeugen (score > 3 oder machine learning) in
+ * Log.Events Tabelle mit "EventLogType" = 'Indicator'; wird aktuell in Janas
+ * private Tabelle eingefügt
  */
 public class LogEvent {
 	// variables for HANA db connection
 	static Connection connection = null;
 	static String myname = "ETD_TEST_CLIENT";
 	static String mysecret = "Initial04";
+	// variables for running the program with delay
+	private final static ScheduledExecutorService scheduler = Executors.newScheduledThreadPool(1);
+	static Runnable execution = null;
+	static ScheduledFuture<?> handler = null;
 	// variables to store information about current log
 	LocalDateTime timeStamp;
 	String systemIdActor;
@@ -41,11 +60,13 @@ public class LogEvent {
 	String subnetIdActor;
 	String subnetIdTarget;
 	int score;
+	String logEventId;
+	int numAnalyzed;
 
 	public LogEvent(Timestamp timeStamp, String systemIdActor, String userIdActor, String networkHostnameTarget,
 			String networkIPAddressTarget, long requestResponseSize, String subnetIdInitiator, String subnetIdActor,
-			String subnetIdTarget, String networkIPAddressActor, String networkIPAddressInitiator) {
-		this.timeStamp = this.convertToEntityAttribute(timeStamp);
+			String subnetIdTarget, String networkIPAddressActor, String networkIPAddressInitiator, String logEventId) {
+		this.timeStamp = convertToEntityAttribute(timeStamp);
 		this.systemIdActor = systemIdActor;
 		this.userIdActor = userIdActor;
 		this.networkHostnameTarget = networkHostnameTarget;
@@ -57,20 +78,22 @@ public class LogEvent {
 		this.networkIPAddressActor = networkIPAddressActor;
 		this.networkIPAddressInitiator = networkIPAddressInitiator;
 		this.score = 0;
+		this.logEventId = logEventId;
+		numAnalyzed = 0;
 	}
 
 	@Override
 	public String toString() {
-		return "[Timestamp: " + timeStamp + "\nSystemIdActor: " + systemIdActor + "\nUserIdActing: " + userIdActor
-				+ "\nNetworkHostnameTarget: " + networkHostnameTarget + "\nNetworkIPAddressTarget: "
-				+ networkIPAddressTarget + "\nNatworkIPAddressActor: " + networkIPAddressActor
-				+ "\nNetworkIPAddressInitiator: " + networkIPAddressInitiator + "\nResourceResponseSize:"
-				+ requestResponseSize + "\nSubnetIdInitiator: " + subnetIdInitiator + "\nSubnetIdActor: "
-				+ subnetIdActor + "\nSubnetIdTarget: " + subnetIdTarget + "\nScore: " + score + "]\n";
+		return "[Timestamp: " + timeStamp + "\nID: " + logEventId + "\nSystemIdActor: " + systemIdActor
+				+ "\nUserIdActing: " + userIdActor + "\nNetworkHostnameTarget: " + networkHostnameTarget
+				+ "\nNetworkIPAddressTarget: " + networkIPAddressTarget + "\nNatworkIPAddressActor: "
+				+ networkIPAddressActor + "\nNetworkIPAddressInitiator: " + networkIPAddressInitiator
+				+ "\nResourceResponseSize:" + requestResponseSize + "\nSubnetIdInitiator: " + subnetIdInitiator
+				+ "\nSubnetIdActor: " + subnetIdActor + "\nSubnetIdTarget: " + subnetIdTarget + "\nScore: " + score
+				+ "]\n";
 	}
 
 	public static void main(String[] args) {
-
 		try { // opening connection to HANA db
 			connection = DriverManager.getConnection("jdbc:sap://ld3796.wdf.sap.corp:30015/?autocommit=false", myname,
 					mysecret);
@@ -78,47 +101,91 @@ public class LogEvent {
 			System.err.println("Error: Connection Failed");
 			return;
 		}
-		// testing starts here, not needed when used productively?!
-		// fake test data =======>
-		// LogEvent logEvent = new LogEvent(java.util.Date("2018-01-20
-		// 03:00:00.000000000"), "$T3/000", "552F9FEC6D382BA3E10000000A4CF109",
-		// null, "33.76.141.255", 789, "BF96E0572011F351E11700000A600446",
-		// "BF96E0572011F351E11700000A600446",
-		// null, null, "33.76.141.50");
-		// System.out.println("Fake example:");
-		// logEvent.analysisLogEventAPT();
-		// logEvent.analysisUnusualPortscanning();
-		// System.out.println("Score: " + logEvent.score);
-		// <======
+		// running the program with delay:
+		execution = new Runnable() {
+			public void run() { // get logs of last 3 minutes & analyze them
+				LinkedList<LogEvent> logEventList = getLogEventsOfLastXMinutes(3);
+				for (int i = 0; i < logEventList.size(); i++) {
+					logEventList.get(i).analysisLogEventAPT();
+				}
+			}
+		};
+		// every 5 minutes the logs of the past 3 minutes are analyzed
+		handler = scheduler.scheduleAtFixedRate(execution, 0, 3, MINUTES);
 
-		// test with real logs =========>
-		LogEvent[] realLogEvents = createLogEvents(2);
-		for (int i = 0; i < realLogEvents.length; i++) {
-			System.out.println("\nNext LogEvent:");
-			realLogEvents[i].analysisLogEventAPT();
-			// System.out.println(realLogEvents[i].score);
-		}
-		// System.out.println(realLogEvents[0].timeStamp.);
-		// <==============
-
+		// program is stopped after 10 minutes
+		scheduler.schedule(new Runnable() {
+			public void run() {
+				handler.cancel(true);
+			}
+		}, 10, MINUTES);
 	}
 
-	// Note that this will use the system default time zone. Alternative:
-	// LocalDateTime.ofInstant(new Instant(ts), ZoneId.of("UTC"));
-	public Timestamp convertToDatabaseColumn(LocalDateTime ldt) {
-		return Timestamp.valueOf(ldt);
+	/**
+	 * Note that this will use the system default time zone. Alternative:
+	 * LocalDateTime.ofInstant(new Instant(ts), ZoneId.of("UTC")); to avoid this
+	 * problem we use minusHours(1) but this only works in UTC+1 timezone
+	 */
+	public static Timestamp convertToDatabaseColumn(LocalDateTime ldt) {
+		return Timestamp.valueOf(ldt.minusHours(1));
 	}
 
-	public LocalDateTime convertToEntityAttribute(Timestamp ts) {
+	public static LocalDateTime convertToEntityAttribute(Timestamp ts) {
 		if (ts != null) {
-			return ts.toLocalDateTime();
+			return ts.toLocalDateTime().minusHours(1);
 		}
 		return null;
 	}
 
-	// it's necessary to check whether '%s' or similar wrongly mapped data is
-	// written in the table
-	// die letzten fünf minuten oder so anschauen
+	public static LinkedList<LogEvent> getLogEventsOfLastXMinutes(int minutes) {
+		Timestamp timestamp = new Timestamp(System.currentTimeMillis());
+		LinkedList<LogEvent> logEventList = new LinkedList<>();
+		long responseSize;
+		try {
+			Statement stmt = connection.createStatement();
+
+			ResultSet resultSet = stmt.executeQuery("SELECT "
+					+ " \"Timestamp\", \"SystemIdActor\", CAST(\"UserIdActing\" AS VARCHAR), \"NetworkHostnameTarget\","
+					+ "\"NetworkIPAddressTarget\", \"ResourceResponseSize\", CAST(\"NetworkSubnetIdInitiator\" AS VARCHAR), CAST(\"NetworkSubnetIdActor\" AS VARCHAR), "
+					+ "CAST(\"NetworkSubnetIdTarget\" AS VARCHAR),    \"NetworkIPAddressActor\", \"NetworkIPAddressInitiator\", CAST(\"Id\" AS VARCHAR)"
+					+ "FROM \"SAP_SEC_MON\".\"sap.secmon.db::Log.Events\" WHERE SUBSTRING(\"NetworkIPAddressTarget\", 0, 1) <> '%'"
+					+ "AND SUBSTRING(\"NetworkIPAddressTarget\", 0, 1) <> '(' AND \"Timestamp\" BETWEEN '"
+					+ convertToDatabaseColumn(convertToEntityAttribute(timestamp).minusMinutes(5)) + "' AND '"
+					+ timestamp + "'");
+
+			while (resultSet.next()) {
+				if (resultSet.getString(6) == null) {
+					responseSize = 0;
+				} else {
+					responseSize = resultSet.getLong(6);
+				}
+				logEventList.add(new LogEvent(resultSet.getTimestamp(1), resultSet.getString(2), resultSet.getString(3),
+						resultSet.getString(4), resultSet.getString(5), responseSize, resultSet.getString(7),
+						resultSet.getString(8), resultSet.getString(9), resultSet.getString(10),
+						resultSet.getString(11), resultSet.getString(12)));
+			}
+
+		} catch (SQLException e) {
+			System.err.println("Error: Query  Failed @getLogEventsOfLastXMinutes");
+		}
+
+		return logEventList;
+	}
+
+	/**
+	 * it's necessary to check whether '%s' or similar wrongly mapped data is
+	 * written in the table die letzten fünf minuten oder so anschauen enter
+	 * this code in main class to use this method:
+	 */
+	// test with real logs =========>
+	/*
+	 * LogEvent[] realLogEvents = createLogEvents(2); for (int i = 0; i <
+	 * realLogEvents.length; i++) { System.out.println("\nNext LogEvent:");
+	 * realLogEvents[i].analysisLogEventAPT(); //
+	 * System.out.println(realLogEvents[i].score); }
+	 */
+	// System.out.println(realLogEvents[0].timeStamp.);
+	// <==============
 	public static LogEvent[] createLogEvents(int numberOfLogs) {
 		LogEvent[] logEvents = new LogEvent[numberOfLogs];
 		try {
@@ -144,7 +211,7 @@ public class LogEvent {
 				logEvents[i] = new LogEvent(resultSet.getTimestamp(1), resultSet.getString(2), resultSet.getString(3),
 						resultSet.getString(4), resultSet.getString(5), responseSize, resultSet.getString(7),
 						resultSet.getString(8), resultSet.getString(9), resultSet.getString(10),
-						resultSet.getString(11));
+						resultSet.getString(11), resultSet.getString(12));
 			}
 
 		} catch (SQLException e) {
@@ -156,36 +223,63 @@ public class LogEvent {
 		return logEvents;
 	}
 
+	/**
+	 * Calls all analysis methods creates an indicator when the total score is
+	 * GE 3 (-> ML possible) TODO could use ML for determining how high a
+	 * high/unusual score is
+	 * 
+	 * @return total score of analysis
+	 */
+
 	public int analysisLogEventAPT() {
+
 		if (analysisUnusualProtocol())
 			score++;
-		System.out.println(score + ", protocol");
+		// System.out.println(score + ", protocol");
 		if (analysisUnusualSystem())
 			score++;
-		System.out.println(score + ", system");
+		// System.out.println(score + ", system");
 		if (analysisUnusualTime())
 			score++;
-		System.out.println(score + ", time");
+		// System.out.println(score + ", time");
 		if (analysisUnusualHostOrIp())
 			score++;
-		System.out.println(score + ", host&/ IP");
+		// System.out.println(score + ", host&/ IP");
 		if (requestResponseSize != 0) {
 			if (analysisUnusuallyLowNumberOfBytes())
 				score++;
 		}
-		System.out.println(score + ", bytes");
+		// System.out.println(score + ", bytes");
 		if (analysisUnusualSubnetConnection())
 			score++;
-		System.out.println(score + ",subnet");
+		// System.out.println(score + ",subnet");
 		if (analysisUnusualPortscanning())
 			score++;
-		System.out.println(score + ", portscanning");
+		// System.out.println(score + ", portscanning");
 
+		if (score >= 3) {
+			try {
+				Statement stmt = connection.createStatement();
+				stmt.executeQuery("INSERT INTO \"PFEFFERJA\".\"Log.Events::Indicators\" (\"Id\", \"Timestamp\","
+						+ "\"SystemIdActor\", \"UserIdActing\", \"NetworkHostnameTarget\", \"NetworkIPAddressTarget\", \"ResourceResponseSize\", "
+						+ "\"SubnetIdActor\", \"SubnetIdInitiator\", \"SubnetIdTarget\", \"NetworkIPAddressActor\", \"NetworkIPAddressInitiator\", "
+						+ "\"Score\", \"NumberOfAnalysedFactors\")" + "(" + logEventId + "," + timeStamp + ","
+						+ systemIdActor + "," + userIdActor + "," + networkHostnameTarget + "," + networkIPAddressTarget
+						+ "," + requestResponseSize + "," + subnetIdActor + "," + subnetIdInitiator + ","
+						+ subnetIdTarget + "," + networkIPAddressActor + "," + networkIPAddressInitiator + "," + score
+						+ "," + numAnalyzed + ")");
+			} catch (SQLException e) {
+				System.err.println("Error: Could not create indicator;" + e.getMessage());
+			}
+		}
+		// System.out.println(score);
 		return score;
 	}
 
-	// analysis: log at unusual time? (based on User ID!)
-	// use activity in last 2 hours and last 10 minutes
+	/**
+	 * analysis: log at unusual time? (based on User ID!); uses activity in last
+	 * 2 hours and last 10 minutes
+	 */
 	private boolean analysisUnusualTime() {
 		boolean restPeriod = false;
 		long numberOfLogsTwoHours;
@@ -200,8 +294,8 @@ public class LogEvent {
 				ResultSet resultSet = stmt.executeQuery(
 						"SELECT COUNT (\"UserIdActing\") FROM \"SAP_SEC_MON\".\"sap.secmon.db::Log.Events\" "
 								+ "WHERE \"UserIdActing\" = '" + userIdActor + "' AND \"Timestamp\" BETWEEN '"
-								+ this.convertToDatabaseColumn(timeStamp.minusHours(2)) + "' AND '"
-								+ this.convertToDatabaseColumn(timeStamp) + "';");
+								+ convertToDatabaseColumn(timeStamp.minusHours(2)) + "' AND '"
+								+ convertToDatabaseColumn(timeStamp) + "';");
 				// '31.01.2018 12:00:00.0' AND '31.01.2018 14:00:00.0'");
 				resultSet.next();
 				numberOfLogsTwoHours = resultSet.getInt(1);
@@ -210,8 +304,8 @@ public class LogEvent {
 				ResultSet resultSetLast10Minutes = stmt.executeQuery(
 						"SELECT COUNT (\"UserIdActing\") FROM \"SAP_SEC_MON\".\"sap.secmon.db::Log.Events\" "
 								+ "WHERE \"UserIdActing\" = '" + userIdActor + "' AND \"Timestamp\" BETWEEN '"
-								+ this.convertToDatabaseColumn(timeStamp.minusHours(2)) + "' AND '"
-								+ this.convertToDatabaseColumn(timeStamp) + "';");
+								+ convertToDatabaseColumn(timeStamp.minusHours(2)) + "' AND '"
+								+ convertToDatabaseColumn(timeStamp) + "';");
 				// '31.01.2018 13:50:00.0' AND '31.01.2018 14:00:00.0'");
 				resultSetLast10Minutes.next();
 				numberOfLogsTenMinutes = resultSetLast10Minutes.getInt(1);
@@ -222,7 +316,7 @@ public class LogEvent {
 				} else {
 					restPeriod = false;
 				}
-
+				numAnalyzed++;
 			} catch (SQLException e) {
 				System.err.println("Query failed! @TimeAnalysis");
 			}
@@ -231,11 +325,12 @@ public class LogEvent {
 		return restPeriod;
 	}
 
-	// returns true, if the user has never successfully logged onto the system
-	// before
-	// erweiterung: unerfolgreiche anmeldung
+	/**
+	 * returns true if the user has never successfully logged on to the system
+	 * before
+	 */
+	// TODO: unerfolgreiche anmeldung
 	private boolean analysisUnusualSystem() {
-		// todo also check failed logins?
 		boolean unusualSystem = false;
 		long numberOfLogins;
 		if (connection != null) {
@@ -256,14 +351,13 @@ public class LogEvent {
 								+ "' AND"
 								+ "\"SAP_SEC_MON\".\"sap.secmon.db::KnowledgeBase.LogEntryType\".\"eventName.name\" = 'UserLogon' AND "
 								+ "\"SAP_SEC_MON\".\"sap.secmon.db::Log.Events\".\"Timestamp\" BETWEEN '"
-								+ this.convertToDatabaseColumn(timeStamp.minusMonths(3)) + "' AND '"
-								+ this.convertToDatabaseColumn(timeStamp) + "'"
+								+ convertToDatabaseColumn(timeStamp.minusMonths(3)) + "' AND '"
+								+ convertToDatabaseColumn(timeStamp) + "'"
 								// '01.11.2017 00:00:00.0' AND '06.02.2018
 								// 00:00:00.0'"
 								+ "GROUP BY \"SAP_SEC_MON\".\"sap.secmon.db::Log.Events\".\"SystemIdActor\","
 								+ "\"SAP_SEC_MON\".\"sap.secmon.db::Log.Events\".\"Timestamp\", \"SAP_SEC_MON\".\"sap.secmon.db::Log.Events\".\"UserIdActing\","
 								+ "\"SAP_SEC_MON\".\"sap.secmon.db::KnowledgeBase.LogEntryType\".\"eventName.name\"");
-				// numberOfLogins = Integer.parseInt(resultSet.getString(1));
 				resultSet.next();
 				// System.out.println(resultSet.getInt(1));
 				numberOfLogins = resultSet.getLong(1);
@@ -273,7 +367,7 @@ public class LogEvent {
 				} else {
 					unusualSystem = true;
 				}
-
+				numAnalyzed++;
 			} catch (SQLException e) {
 				System.err.println("Query failed! @SystemAnalysis");
 			}
@@ -284,15 +378,16 @@ public class LogEvent {
 	private boolean analysisUnusualProtocol() {
 		boolean unusualProtocol = false;
 		if (connection != null) {
-			// ja was?
+			// TODO
 		}
 		return unusualProtocol;
 	}
 
-	// wenn der host später öfter genommen wird dann ist es nicht ungewöhnlich
-	// analyse für "älktere" daten, eg vor einer stunde/tag; vergangene zukunft;
-	// 3 wochen oder so in vergangenheit; ggf zusätzlich
-	// -> ist es plötzlich normal geworden?
+	// TODO when the host is called more often later on it is no longer unusual.
+	// -> Analysis for older data, e.g. 1 day/hour / 3 weeks ago -> past future
+	// -> does it become normal?
+	// -> extra routine for analyzing whether a host becomes usual or stays
+	// unusual!
 	private boolean analysisUnusualHostOrIp() {
 		boolean unusualHost = false;
 		long numberOfFormerConnections;
@@ -353,7 +448,7 @@ public class LogEvent {
 					} else {
 						unusualHost = true;
 					}
-
+					numAnalyzed++;
 				} else {
 					System.err.println("Failed, no IP Address and/or Hostname.");
 				}
@@ -365,25 +460,23 @@ public class LogEvent {
 		return unusualHost;
 	}
 
+	// TODO use ML for determining an unusually low number of bytes
 	private boolean analysisUnusuallyLowNumberOfBytes() {
 		boolean lowNumberOfBytes = false;
 		if (connection != null) {
 			try {
 				Statement stmt = connection.createStatement();
-
-				// is this calculation valid? Check it out!
 				ResultSet resultSet = stmt.executeQuery(
 						"SELECT AVG(\"ResourceResponseSize\") * 0.1  FROM \"SAP_SEC_MON\".\"sap.secmon.db::Log.Events\""
 								+ "WHERE \"UserIdActing\" = '" + userIdActor + "'"
 								+ " AND \"ResourceResponseSize\" IS NOT NULL");
-				// - STDDEV(\"ResourceResponseSize\")
 				resultSet.next();
 				if (this.requestResponseSize <= resultSet.getDouble(1)) {
 					lowNumberOfBytes = true;
 				} else {
 					lowNumberOfBytes = false;
 				}
-
+				numAnalyzed++;
 			} catch (SQLException e) {
 				System.err.println("Query failed! @ByteAnalysis");
 			}
@@ -392,8 +485,9 @@ public class LogEvent {
 		return lowNumberOfBytes;
 	}
 
-	// wenns danach oft aufgerufen wird dann ist es nciht ungewöhnlich.
-	// t in der vergangenheit wählen für vergangene zukunft
+	// TODO analyze past future. Subnet Connection can become usual if it is
+	// used often after the first unusual times
+	// -> extra routine, evtl. combination with unusual Host/IP ?
 	private boolean analysisUnusualSubnetConnection() {
 		boolean unusualSubnetConnection = false;
 		if (connection != null) {
@@ -462,6 +556,7 @@ public class LogEvent {
 						}
 					}
 				}
+				numAnalyzed++;
 			} catch (SQLException e) {
 				System.err.println("Query failed! @SubnetAnalysis");
 			}
@@ -470,17 +565,16 @@ public class LogEvent {
 		return unusualSubnetConnection;
 	}
 
+	// TODO check whether these IPs frequently have contact and not only
+	// once, check for subnet as well
 	private boolean analysisUnusualPortscanning() {
-		/*
-		 * todo check whether these IPs frequently have contact and not only
-		 * once, check for subnet as well
-		 */
 		boolean unusualPortScanning = false;
 		if (connection != null) {
 			try {
 				if (networkIPAddressTarget != null) {
 					Statement stmt = connection.createStatement();
 					if (networkIPAddressInitiator != null) {
+						numAnalyzed++;
 						// check for portscanning from the initiator IP address
 						if (this._checkUnusualPortscanning("initiator", stmt)) {
 							// portscanning from the initiator IP
@@ -498,6 +592,7 @@ public class LogEvent {
 						}
 					} else { // no initiator IP address given
 						if (networkIPAddressActor != null) {
+							numAnalyzed++;
 							return this._checkUnusualPortscanning("actor", stmt);
 						} else {
 							System.err.println("IP analysis impossible: actor and initiator IP is missing.");
@@ -515,7 +610,9 @@ public class LogEvent {
 	}
 
 	// ipAddress should either contain "actor" or "initiator"
-	// transform ipv4 address into ipv6 adress
+	// TODO transform ipv4 address into ipv6 adress
+	// TODO group by origin, are there more than x connections in the past
+	// future when there were <= x connections in the past
 	private boolean _checkUnusualPortscanning(String ipAddress, Statement stmt) {
 		boolean unusualPortScanning = false;
 		String ipName = null;
@@ -524,9 +621,6 @@ public class LogEvent {
 		String[] ip_target;
 
 		// check whether the Target Ip is in Ipv4 or ipv6 format
-		// muss man eigentlich noch nach herkunft gruppieren
-		// vergangene zukunft; gibts in der zukunft mehr als n wenn es jetzt in
-		// der vergangenheit nicht mehr als n gab
 		if (networkIPAddressTarget.length() <= 15) { // IPv4
 			System.out.println("IPv4");
 			ip_target = networkIPAddressTarget.split("\\.");
@@ -561,8 +655,8 @@ public class LogEvent {
 							+ comparableIPAddress + "' AND SUBSTRING(\"NetworkIPAddressTarget\", 0, " + substring_length
 							+ ") = '" + ip_substring + "' AND SUBSTRING(\"NetworkIPAddressTarget\", "
 							+ (substring_length + 1) + ", " + deviceIPLength + ") <> '" + ip_compare[3]
-							+ "' AND \"Timestamp\" BETWEEN '" + this.convertToDatabaseColumn(timeStamp.minusWeeks(1))
-							+ "' AND '" + this.convertToDatabaseColumn(timeStamp) + "';");
+							+ "' AND \"Timestamp\" BETWEEN '" + convertToDatabaseColumn(timeStamp.minusWeeks(1))
+							+ "' AND '" + convertToDatabaseColumn(timeStamp) + "';");
 					// 24.01.2018 00:00:00.0' AND '31.01.2018 00:00:00.0'");
 					resultSet.next();
 					if (resultSet.getInt(1) > 4) {
@@ -570,7 +664,7 @@ public class LogEvent {
 					} else {
 						unusualPortScanning = false;
 					}
-
+					numAnalyzed++;
 				} catch (SQLException e) {
 					System.err.println("Query failed! @PortscanningAnalysisInnerMethod");
 				}
@@ -619,8 +713,8 @@ public class LogEvent {
 							+ comparableIPAddress + "' AND SUBSTRING(\"NetworkIPAddressTarget\", 0, " + substring_length
 							+ ") = '" + ip_substring + "' AND SUBSTRING(\"NetworkIPAddressTarget\", "
 							+ (substring_length + 1) + ", " + deviceIPLength + ") <> '" + ip_device
-							+ "' AND \"Timestamp\" BETWEEN '" + this.convertToDatabaseColumn(timeStamp.minusWeeks(1))
-							+ "' AND '" + this.convertToDatabaseColumn(timeStamp) + "';");
+							+ "' AND \"Timestamp\" BETWEEN '" + convertToDatabaseColumn(timeStamp.minusWeeks(1))
+							+ "' AND '" + convertToDatabaseColumn(timeStamp) + "';");
 					// BETWEEN '24.01.2018 00:00:00.0' AND '31.01.2018
 					// 00:00:00.0'");
 					resultSet.next();
@@ -629,7 +723,7 @@ public class LogEvent {
 					} else {
 						unusualPortScanning = false;
 					}
-
+					numAnalyzed++;
 				} catch (SQLException e) {
 					System.err.println("Query failed! @PortscanningAnalysisInnerMethod");
 				}
@@ -658,3 +752,16 @@ public class LogEvent {
 // System.out.println("");
 // }
 // }
+
+// testing starts here, not needed when used productively?!
+// fake test data =======>
+// LogEvent logEvent = new LogEvent(java.util.Date("2018-01-20
+// 03:00:00.000000000"), "$T3/000", "552F9FEC6D382BA3E10000000A4CF109",
+// null, "33.76.141.255", 789, "BF96E0572011F351E11700000A600446",
+// "BF96E0572011F351E11700000A600446",
+// null, null, "33.76.141.50");
+// System.out.println("Fake example:");
+// logEvent.analysisLogEventAPT();
+// logEvent.analysisUnusualPortscanning();
+// System.out.println("Score: " + logEvent.score);
+// <======
