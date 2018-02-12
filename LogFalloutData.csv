@@ -1,15 +1,9 @@
 Timestamp;TechnicalLogColumnName;LogEvent;TimeOfFallout;TimeOfRecovery;Score;Okay;Reason
-2018-02-09 16:35:35.891;Streaming Proxy;SAPKernel;2018-02-09 15:27:50.699000000;;;;
-2018-02-09 16:35:35.901;MyLogCollectorName;WinEventLog:Security;2018-02-09 14:58:34.000000000;;;;
-2018-02-09 16:35:35.902;Streaming Proxy;ReadAccessLog;2018-02-09 15:21:41.534000000;;;;
-2018-02-09 16:35:35.903;MyLogCollectorName;WinEventLog:Application;2018-02-09 14:58:32.000000000;;;;
-2018-02-09 16:35:35.904;Streaming Proxy;HttpServerLog;2018-02-09 15:10:02.000000000;;;;
-2018-02-09 16:35:35.905;MyLogCollectorName;WinEventLog:System;2018-02-09 14:58:32.000000000;;;;
-2018-02-09 16:35:35.944;Streaming Proxy;UserChangeLog;;2018-02-09 15:32:50.000000000;;;
-2018-02-09 16:35:40.881;Streaming Proxy;SAPKernel;2018-02-09 15:27:50.699000000;;;;
-2018-02-09 16:35:40.882;MyLogCollectorName;WinEventLog:Security;2018-02-09 14:58:34.000000000;;;;
-2018-02-09 16:35:40.883;Streaming Proxy;ReadAccessLog;2018-02-09 15:21:41.534000000;;;;
-2018-02-09 16:35:40.884;MyLogCollectorName;WinEventLog:Application;2018-02-09 14:58:32.000000000;;;;
-2018-02-09 16:35:40.885;Streaming Proxy;HttpServerLog;2018-02-09 15:10:02.000000000;;;;
-2018-02-09 16:35:40.886;MyLogCollectorName;WinEventLog:System;2018-02-09 14:58:32.000000000;;;;
-2018-02-09 16:35:40.93;Streaming Proxy;UserChangeLog;;2018-02-09 15:32:50.000000000;;;
+2018-02-12 09:58:02.938;Streaming Proxy;GatewayLog;2018-02-12 08:04:08.192000000;;;;
+2018-02-12 09:58:02.96;Streaming Proxy;HttpServerLog;2018-02-12 08:26:47.000000000;;;;
+2018-02-12 09:58:03.004;MyLogCollectorName;WinEventLog:Security;;2018-02-12 08:55:10.000000000;;;
+2018-02-12 09:58:03.007;MyLogCollectorName;WinEventLog:Application;;2018-02-12 08:54:42.000000000;;;
+2018-02-12 09:58:03.011;MyLogCollectorName;WinEventLog:System;;2018-02-12 08:54:31.000000000;;;
+2018-02-12 10:03:02.91;Streaming Proxy;GatewayLog;2018-02-12 08:04:08.192000000;;;;
+2018-02-12 10:03:02.914;Streaming Proxy;HttpServerLog;2018-02-12 08:26:47.000000000;;;;
+2018-02-12 10:03:02.958;Streaming Proxy;UserChangeLog;;2018-02-12 09:01:04.000000000;;;

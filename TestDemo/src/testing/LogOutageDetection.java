@@ -43,7 +43,7 @@ public class LogOutageDetection {
 				}
 			}
 		};
-		handler = scheduler.scheduleAtFixedRate(execution, 0, 5, SECONDS);
+		handler = scheduler.scheduleAtFixedRate(execution, 0, 5, MINUTES);
 		// MINUTES);
 
 		scheduler.schedule(new Runnable() {
@@ -51,7 +51,7 @@ public class LogOutageDetection {
 
 				handler.cancel(true);
 			}
-		}, 60, SECONDS);
+		}, 4*60, MINUTES);
 
 	}
 
