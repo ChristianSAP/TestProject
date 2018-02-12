@@ -27,10 +27,11 @@ import sun.usagetracker.UsageTrackerClient;
 /*
  * TODO: - windows log von servern subnetze qualifizieren direkte tcp -
  * kommunikation: protokolle ausschließen, nachlesen was browser macht - insert
- * ungewöhnliches protokoll bspw fdp while schleife in main, stoppbar machen (eg
- * file erzeugen & überprüfen, ob dieses existiert (aktuell einfah für zeit t
- * gestarttet). wenn ja dann löschen&stoppen) -> Konsolenbefehl starten, stoppen
- * ; check if numAnalyzed is incremented at correct times
+ * ungewöhnliches protokoll bspw fdp - while schleife in main, stoppbar machen
+ * (eg file erzeugen & überprüfen, ob dieses existiert (aktuell einfah für zeit
+ * t gestarttet). wenn ja dann löschen&stoppen) -> Konsolenbefehl starten,
+ * stoppen ; check if numAnalyzed is incremented at correct times; create
+ * indicators; use IPAddress when useridacting is not given
  * 
  * erledigt: - 2 routinen: letzte 2/3 minuten -> alle 2/3 minuten ausführen für
  * vergangene zukunft: wird alle 3 Minuten für die letzten 3 minuten ausgeführt
@@ -39,12 +40,9 @@ import sun.usagetracker.UsageTrackerClient;
  * 
  * halb: - Score: Indicator erzeugen (score > 3 oder machine learning) in
  * Log.Events Tabelle mit "EventLogType" = 'Indicator'; wird aktuell in Janas
- * private Tabelle eingefügt
+ * private Tabelle eingefügt correlationId nutzen um mehrere indikatoren zu
+ * verbinden
  * 
- * Michael: analysisUnusualSystem failedLogon absprechen. man braucht
- * zusätzliches select, da sonst nicht unusual rauskommt, wenn man sich oft
- * genug versucht falsch anzumelden. soll das dann zusätzlich sein? oder
- * innerhalb der bisherigen Methode?
  */
 public class LogEvent {
 	// lower limit for score
@@ -71,7 +69,7 @@ public class LogEvent {
 	String subnetIdInitiator;
 	String subnetIdActor;
 	String subnetIdTarget;
-	int score;
+	double score;
 	String logEventId;
 	int numAnalyzed;
 	boolean unusualHostOrIp;
@@ -81,10 +79,12 @@ public class LogEvent {
 	boolean unusualTime;
 	boolean unusualLowNumOfBytes;
 	boolean unusualPortscanning;
+	String protocol;
 
 	public LogEvent(Timestamp timeStamp, String systemIdActor, String userIdActor, String networkHostnameTarget,
 			String networkIPAddressTarget, long requestResponseSize, String subnetIdInitiator, String subnetIdActor,
-			String subnetIdTarget, String networkIPAddressActor, String networkIPAddressInitiator, String logEventId) {
+			String subnetIdTarget, String networkIPAddressActor, String networkIPAddressInitiator, String logEventId,
+			String protocol) {
 		this.timeStamp = convertToEntityAttribute(timeStamp);
 		this.systemIdActor = systemIdActor;
 		this.userIdActor = userIdActor;
@@ -99,6 +99,7 @@ public class LogEvent {
 		this.score = 0;
 		this.logEventId = logEventId;
 		numAnalyzed = 0;
+		this.protocol = protocol;
 	}
 
 	@Override
@@ -174,44 +175,44 @@ public class LogEvent {
 	 * become usual. We save the timestamp in a temp variable and overwrite it
 	 * with the current timestamp for analyse purpose
 	 */
+	// TODO analyze future past of portscanning: does the number of pings
+	// increase?
 	public void analyzePastFuture() {
 		// 1. What makes this log unusual
 		// 2. did that thing become usual within the last 2h?
 		// 3. if so, this is no longer an indicator -> delete entry/change
 		// EventLogType
 		LocalDateTime tempTS = this.timeStamp;
-		analysisLogEventAPT();
-		this.timeStamp = LocalDateTime.now().minusHours(1);
-		if (unusualHostOrIp) {
-			if (!analysisUnusualHostOrIp()) {
-				unusualHostOrIp = false;
-				score--;
+		if (analysisLogEventAPT() >= lowerScoreLimit) {
+			// TODO verify that this is actually an APT indicator. If it isn't
+			// we can't just delete it later!
+			this.timeStamp = LocalDateTime.now().minusHours(1);
+			if (unusualHostOrIp) {
+				if (!analysisUnusualHostOrIp()) {
+					unusualHostOrIp = false;
+					score--;
+				}
 			}
-		}
-		if (unusualSubnetConnection) {
-			if (!analysisUnusualSubnetConnection()) {
-				unusualSubnetConnection = false;
-				score--;
-			}
-		}
-
-		if (score >= lowerScoreLimit) {
-			this.timeStamp = tempTS;
-			Statement stmt;
-			try {
-				stmt = connection.createStatement();
-				// Ver 1 EventLogType is changed
-				stmt.executeQuery(
-						"UPDATE \"SAP_SEC_MON\".\"sap.secmon.db::Log.Events\" SET \"EventLogType\" = '' WHERE \"Id\" = '"
-								+ logEventId + "';");
-				// Ver 2 entry is deleted
-				stmt.executeQuery("DELETE FROM \"SAP_SEC_MON\".\"sap.secmon.db::Log.Events\" WHERE \"Id\" = '"
-						+ logEventId + "';");
-			} catch (SQLException e) {
-				System.err
-						.println("ERROR: Could not update table entry to no longer be an indicator." + e.getMessage());
+			if (unusualSubnetConnection) {
+				if (!analysisUnusualSubnetConnection()) {
+					unusualSubnetConnection = false;
+					score--;
+				}
 			}
 
+			if (score >= lowerScoreLimit) {
+				this.timeStamp = tempTS;
+				Statement stmt;
+				try {
+					stmt = connection.createStatement();
+					stmt.executeQuery("DELETE FROM \"SAP_SEC_MON\".\"sap.secmon.db::Log.Events\" WHERE \"Id\" = '"
+							+ logEventId + "';");
+				} catch (SQLException e) {
+					System.err.println(
+							"ERROR: Could not update table entry to no longer be an indicator." + e.getMessage());
+				}
+
+			}
 		}
 
 	}
@@ -242,7 +243,7 @@ public class LogEvent {
 			ResultSet resultSet = stmt.executeQuery("SELECT "
 					+ " \"Timestamp\", \"SystemIdActor\", CAST(\"UserIdActing\" AS VARCHAR), \"NetworkHostnameTarget\","
 					+ "\"NetworkIPAddressTarget\", \"ResourceResponseSize\", CAST(\"NetworkSubnetIdInitiator\" AS VARCHAR), CAST(\"NetworkSubnetIdActor\" AS VARCHAR), "
-					+ "CAST(\"NetworkSubnetIdTarget\" AS VARCHAR),    \"NetworkIPAddressActor\", \"NetworkIPAddressInitiator\", CAST(\"Id\" AS VARCHAR)"
+					+ "CAST(\"NetworkSubnetIdTarget\" AS VARCHAR),    \"NetworkIPAddressActor\", \"NetworkIPAddressInitiator\", CAST(\"Id\" AS VARCHAR), \"NetworkProtocol\" "
 					+ "FROM \"SAP_SEC_MON\".\"sap.secmon.db::Log.Events\" WHERE SUBSTRING(\"NetworkIPAddressTarget\", 0, 1) <> '%'"
 					+ "AND SUBSTRING(\"NetworkIPAddressTarget\", 0, 1) <> '(' AND \"Timestamp\" BETWEEN '"
 					+ convertToDatabaseColumn(convertToEntityAttribute(timestamp).minusMinutes(5)) + "' AND '"
@@ -257,7 +258,7 @@ public class LogEvent {
 				logEventList.add(new LogEvent(resultSet.getTimestamp(1), resultSet.getString(2), resultSet.getString(3),
 						resultSet.getString(4), resultSet.getString(5), responseSize, resultSet.getString(7),
 						resultSet.getString(8), resultSet.getString(9), resultSet.getString(10),
-						resultSet.getString(11), resultSet.getString(12)));
+						resultSet.getString(11), resultSet.getString(12), resultSet.getString(13)));
 			}
 
 		} catch (SQLException e) {
@@ -297,7 +298,7 @@ public class LogEvent {
 				logEvents[i] = new LogEvent(resultSet.getTimestamp(1), resultSet.getString(2), resultSet.getString(3),
 						resultSet.getString(4), resultSet.getString(5), responseSize, resultSet.getString(7),
 						resultSet.getString(8), resultSet.getString(9), resultSet.getString(10),
-						resultSet.getString(11), resultSet.getString(12));
+						resultSet.getString(11), resultSet.getString(12), resultSet.getString(13));
 			}
 
 		} catch (SQLException e) {
@@ -317,17 +318,14 @@ public class LogEvent {
 	 * @return total score of analysis
 	 */
 
-	public int analysisLogEventAPT() {
+	public double analysisLogEventAPT() {
 
 		if (analysisUnusualProtocol()) {
 			score++;
 			unusualProtocol = true;
 		}
 
-		if (analysisUnusualSystem()) {
-			score++;
-			unusualSystem = true;
-		}
+		score += analysisUnusualSystem();
 
 		if (analysisUnusualTime()) {
 			score++;
@@ -359,6 +357,8 @@ public class LogEvent {
 			try {
 				Statement stmt = connection.createStatement();
 				// TODO create indicator in sap_sec_mon log.events table
+				// TODO connect this indicator with past indicators with a
+				// correlationId
 				stmt.executeQuery("INSERT INTO \"PFEFFERJA\".\"Log.Events::Indicators\" (\"Id\", \"Timestamp\","
 						+ "\"SystemIdActor\", \"UserIdActing\", \"NetworkHostnameTarget\", \"NetworkIPAddressTarget\", \"ResourceResponseSize\", "
 						+ "\"SubnetIdActor\", \"SubnetIdInitiator\", \"SubnetIdTarget\", \"NetworkIPAddressActor\", \"NetworkIPAddressInitiator\", "
@@ -422,36 +422,85 @@ public class LogEvent {
 		return restPeriod;
 	}
 
-	/**
-	 * returns true if the user has never successfully logged on to the system
-	 * before
-	 */
-	// TODO: failed logon
-	// proposed solution: second select with the following condition:
-	// (SUBSTRING("eventName.name", 0, 9) = 'UserLogon' OR "eventName.Name" =
-	// 'UserAuthorizationCheckFail')
-	private boolean analysisUnusualSystem() {
+	private double analysisUnusualSystem() {
 		boolean unusualSystem = false;
 		long numberOfLogins;
+		double logonScore = 0;
 		if (connection != null) {
 			try {
 				Statement stmt = connection.createStatement();
-				// 1. determine whether the user tried to log into a system and whether this failed or not
-				// 2. depending on whether the logon was successful or not we check whether 
+				// check whether this is a logon
+				ResultSet resultSetLogon = stmt.executeQuery(
+						"SELECT \"SAP_SEC_MON\".\"sap.secmon.db::KnowledgeBase.LogEntryType\".\"eventName.name\""
+								+ " FROM \"SAP_SEC_MON\".\"sap.secmon.db::Log.Events\""
+								+ " INNER JOIN \"SAP_SEC_MON\".\"sap.secmon.db::KnowledgeBase.LogEntryType\" "
+								+ " ON \"SAP_SEC_MON\".\"sap.secmon.db::KnowledgeBase.LogEntryType\".\"id\" = \"SAP_SEC_MON\".\"sap.secmon.db::Log.Events\".\"TechnicalLogEntryType\""
+								+ " WHERE \"SAP_SEC_MON\".\"sap.secmon.db::Log.Events\".\"Id\" = '" + logEventId + "'");
+				resultSetLogon.next();
+				if (resultSetLogon.getString(1).substring(0, 8) == "UserLogon") {
+					// this log contains a successful/failed logon
+					if (resultSetLogon.getString(1).length() != 9) {
+						// it's a failed logon
+						_analysisFailedSystemLogons();
+					} else {
+						ResultSet resultSet = stmt.executeQuery(
+								"SELECT TOP 1 COUNT(\"SAP_SEC_MON\".\"sap.secmon.db::Log.Events\".\"TechnicalLogEntryType\"), \"SAP_SEC_MON\".\"sap.secmon.db::Log.Events\".\"SystemIdActor\","
+										+ "\"SAP_SEC_MON\".\"sap.secmon.db::Log.Events\".\"Timestamp\", \"SAP_SEC_MON\".\"sap.secmon.db::Log.Events\".\"UserIdActing\","
+										+ "\"SAP_SEC_MON\".\"sap.secmon.db::KnowledgeBase.LogEntryType\".\"eventName.name\""
+
+										+ "FROM \"SAP_SEC_MON\".\"sap.secmon.db::Log.Events\""
+										+ "INNER JOIN \"SAP_SEC_MON\".\"sap.secmon.db::KnowledgeBase.LogEntryType\" "
+										+ "ON \"SAP_SEC_MON\".\"sap.secmon.db::KnowledgeBase.LogEntryType\".\"id\" = \"SAP_SEC_MON\".\"sap.secmon.db::Log.Events\".\"TechnicalLogEntryType\""
+
+										+ "WHERE \"SAP_SEC_MON\".\"sap.secmon.db::Log.Events\".\"SystemIdActor\" = '"
+										+ systemIdActor + "' AND "
+										+ "\"SAP_SEC_MON\".\"sap.secmon.db::Log.Events\".\"UserIdActing\" = '"
+										+ userIdActor + "' AND"
+										+ "\"SAP_SEC_MON\".\"sap.secmon.db::KnowledgeBase.LogEntryType\".\"eventName.name\" = 'UserLogon' AND "
+										+ "\"SAP_SEC_MON\".\"sap.secmon.db::Log.Events\".\"Timestamp\" BETWEEN '"
+										+ convertToDatabaseColumn(timeStamp.minusMonths(3)) + "' AND '"
+										+ convertToDatabaseColumn(timeStamp) + "'"
+										+ "GROUP BY \"SAP_SEC_MON\".\"sap.secmon.db::Log.Events\".\"SystemIdActor\","
+										+ "\"SAP_SEC_MON\".\"sap.secmon.db::Log.Events\".\"Timestamp\", \"SAP_SEC_MON\".\"sap.secmon.db::Log.Events\".\"UserIdActing\","
+										+ "\"SAP_SEC_MON\".\"sap.secmon.db::KnowledgeBase.LogEntryType\".\"eventName.name\"");
+						resultSet.next();
+						numberOfLogins = resultSet.getLong(1);
+						System.out.println(numberOfLogins);
+						if (numberOfLogins > 0) {
+							unusualSystem = false;
+						} else {
+							unusualSystem = true;
+							logonScore = 1;
+						}
+					}
+				}
+
+				numAnalyzed++;
+			} catch (SQLException e) {
+				System.err.println("Query failed! @SystemAnalysis. This was not a Logon");
+			}
+		}
+		return logonScore;
+	}
+
+	private double _analysisFailedSystemLogons() {
+		int numberOfFailedLogins = 0;
+		double failScore = 0;
+		if (connection != null) {
+			try {
+				Statement stmt = connection.createStatement();
 				ResultSet resultSet = stmt.executeQuery(
-						"SELECT TOP 1 COUNT(\"SAP_SEC_MON\".\"sap.secmon.db::Log.Events\".\"TechnicalLogEntryType\"), \"SAP_SEC_MON\".\"sap.secmon.db::Log.Events\".\"SystemIdActor\","
-								+ "\"SAP_SEC_MON\".\"sap.secmon.db::Log.Events\".\"Timestamp\", \"SAP_SEC_MON\".\"sap.secmon.db::Log.Events\".\"UserIdActing\","
-								+ "\"SAP_SEC_MON\".\"sap.secmon.db::KnowledgeBase.LogEntryType\".\"eventName.name\""
+						"SELECT TOP 1 COUNT(\"SAP_SEC_MON\".\"sap.secmon.db::Log.Events\".\"TechnicalLogEntryType\")"
 
 								+ "FROM \"SAP_SEC_MON\".\"sap.secmon.db::Log.Events\""
 								+ "INNER JOIN \"SAP_SEC_MON\".\"sap.secmon.db::KnowledgeBase.LogEntryType\" "
 								+ "ON \"SAP_SEC_MON\".\"sap.secmon.db::KnowledgeBase.LogEntryType\".\"id\" = \"SAP_SEC_MON\".\"sap.secmon.db::Log.Events\".\"TechnicalLogEntryType\""
 
-								+ "WHERE \"SAP_SEC_MON\".\"sap.secmon.db::Log.Events\".\"SystemIdActor\" = '"
-								+ systemIdActor + "' AND "
-								+ "\"SAP_SEC_MON\".\"sap.secmon.db::Log.Events\".\"UserIdActing\" = '" + userIdActor
-								+ "' AND"
-								+ "\"SAP_SEC_MON\".\"sap.secmon.db::KnowledgeBase.LogEntryType\".\"eventName.name\" = 'UserLogon' AND "
+								+ "WHERE \"SAP_SEC_MON\".\"sap.secmon.db::Log.Events\".\"UserIdActing\" = '"
+								+ userIdActor
+								+ "' AND (SUBSTRING(\"SAP_SEC_MON\".\"sap.secmon.db::KnowledgeBase.LogEntryType\".\"eventName.name\", 0, 9) = 'UserLogon' OR "
+								+ "\"SAP_SEC_MON\".\"sap.secmon.db::KnowledgeBase.LogEntryType\".\"eventName.name\" = 'UserAuthorizationCheckFail')"
+								+ "\"SAP_SEC_MON\".\"sap.secmon.db::KnowledgeBase.LogEntryType\".\"eventName.name\" <> 'UserLogon' AND "
 								+ "\"SAP_SEC_MON\".\"sap.secmon.db::Log.Events\".\"Timestamp\" BETWEEN '"
 								+ convertToDatabaseColumn(timeStamp.minusMonths(3)) + "' AND '"
 								+ convertToDatabaseColumn(timeStamp) + "'"
@@ -459,25 +508,36 @@ public class LogEvent {
 								+ "\"SAP_SEC_MON\".\"sap.secmon.db::Log.Events\".\"Timestamp\", \"SAP_SEC_MON\".\"sap.secmon.db::Log.Events\".\"UserIdActing\","
 								+ "\"SAP_SEC_MON\".\"sap.secmon.db::KnowledgeBase.LogEntryType\".\"eventName.name\"");
 				resultSet.next();
-				numberOfLogins = resultSet.getLong(1);
-				System.out.println(numberOfLogins);
-				if (numberOfLogins > 0) {
-					unusualSystem = false;
-				} else {
-					unusualSystem = true;
+				numberOfFailedLogins = resultSet.getInt(1);
+				System.out.println(numberOfFailedLogins);
+				if (numberOfFailedLogins < 100) {
+					// in case of many failed logins it's likely that
+					// a program is failing, this is no sign of an APT
+					if (numberOfFailedLogins == 1) {
+						failScore = 0.1;
+					} else if (numberOfFailedLogins == 2) {
+						failScore = 0.3;
+					} else if (numberOfFailedLogins > 3) {
+						unusualSystem = true;
+						if (numberOfFailedLogins > 10) {
+							failScore = 1;
+						} else if (numberOfFailedLogins > 5) {
+							failScore = 0.6;
+						}
+
+					}
 				}
 				numAnalyzed++;
 			} catch (SQLException e) {
-				System.err.println("Query failed! @SystemAnalysis");
+				System.err.println("Query failed! @FailedLogonSystemAnalysis");
 			}
 		}
-		return unusualSystem;
+		return failScore;
 	}
 
 	/**
 	 * Checks, whether the protocol itself is unusual for a specific user (if
-	 * given) or generally TODO unusual protocol in combination with other
-	 * stuff1
+	 * given) or generally TODO unusual protocol in combination with other stuff
 	 */
 
 	private boolean analysisUnusualProtocol() {
@@ -485,7 +545,10 @@ public class LogEvent {
 		if (connection != null) {
 			try {
 				Statement stmt = connection.createStatement();
-				ResultSet resultSet = stmt.executeQuery("SELECT COUNT (*)"); // TODO
+				ResultSet resultSet = stmt
+						.executeQuery("SELECT COUNT (*) FROM \"SAP_SEC_MON\".\"sap.secmon.db::Log.Events\" "
+								+ "WHERE \"UserIdActing\" = '" + userIdActor + "'" + " AND \"NetworkProtocol\" = '"
+								+ protocol + "'"); // TODO continue this
 			} catch (Exception e) {
 				System.err.println("Query failed @unusualProtocol");
 			}
@@ -493,11 +556,6 @@ public class LogEvent {
 		return unusualProtocol;
 	}
 
-	// TODO when the host is called more often later on it is no longer unusual.
-	// -> Analysis for older data, e.g. 1 day/hour / 3 weeks ago -> past future
-	// -> does it become normal?
-	// -> extra routine for analyzing whether a host becomes usual or stays
-	// unusual!
 	private boolean analysisUnusualHostOrIp() {
 		boolean unusualHost = false;
 		long numberOfFormerConnections;
@@ -595,9 +653,6 @@ public class LogEvent {
 		return lowNumberOfBytes;
 	}
 
-	// TODO analyze past future. Subnet Connection can become usual if it is
-	// used often after the first unusual times
-	// -> extra routine, evtl. combination with unusual Host/IP ?
 	private boolean analysisUnusualSubnetConnection() {
 		boolean unusualSubnetConnection = false;
 		if (connection != null) {
