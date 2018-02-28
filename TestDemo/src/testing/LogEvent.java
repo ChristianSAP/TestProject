@@ -31,7 +31,9 @@ import sun.usagetracker.UsageTrackerClient;
  * (eg file erzeugen & überprüfen, ob dieses existiert (aktuell einfah für zeit
  * t gestarttet). wenn ja dann löschen&stoppen) -> Konsolenbefehl starten,
  * stoppen ; check if numAnalyzed is incremented at correct times; create
- * indicators; use IPAddress when useridacting is not given
+ * indicators; use IPAddress when useridacting is not given unusualprotocol ist
+ * aktuell auskommentiert, da es nicht fertig implementiert ist und laut daniel
+ * überflüssig
  * 
  * erledigt: - 2 routinen: letzte 2/3 minuten -> alle 2/3 minuten ausführen für
  * vergangene zukunft: wird alle 3 Minuten für die letzten 3 minuten ausgeführt
@@ -80,6 +82,7 @@ public class LogEvent {
 	boolean unusualLowNumOfBytes;
 	boolean unusualPortscanning;
 	String protocol;
+	double Score[] = new double[7];
 
 	public LogEvent(Timestamp timeStamp, String systemIdActor, String userIdActor, String networkHostnameTarget,
 			String networkIPAddressTarget, long requestResponseSize, String subnetIdInitiator, String subnetIdActor,
@@ -126,7 +129,7 @@ public class LogEvent {
 		executeAnalysis = new Runnable() {
 			public void run() { // get logs of last 3 minutes & analyze them
 				LinkedList<LogEvent> logEventList = getLogEvents(3,
-						convertToEntityAttribute(new Timestamp(System.currentTimeMillis())), null);
+						convertToEntityAttribute(new Timestamp(System.currentTimeMillis())).minusHours(1), "");
 
 				for (int i = 0; i < logEventList.size(); i++) {
 					logEventList.get(i).analysisLogEventAPT();
@@ -138,7 +141,7 @@ public class LogEvent {
 			public void run() { // get indicator logs beween 2h ago and 4h ago
 								// and analyze them
 				LinkedList<LogEvent> logEventList = getLogEvents(60 * 2,
-						convertToEntityAttribute(new Timestamp(System.currentTimeMillis())).minusHours(2),
+						convertToEntityAttribute(new Timestamp(System.currentTimeMillis())).minusHours(3),
 						" AND \"EventLogType\" = 'Indicator'");
 				for (int i = 0; i < logEventList.size(); i++) {
 					logEventList.get(i).analyzePastFuture();
@@ -186,19 +189,22 @@ public class LogEvent {
 		if (analysisLogEventAPT() >= lowerScoreLimit) {
 			// TODO verify that this is actually an APT indicator. If it isn't
 			// we can't just delete it later!
+			// TODO change daetime to UTC instead of minusHours(1)
 			this.timeStamp = LocalDateTime.now().minusHours(1);
 			if (unusualHostOrIp) {
-				if (!analysisUnusualHostOrIp()) {
-					unusualHostOrIp = false;
-					score--;
+				if (analysisUnusualHostOrIp() == 0) {
+					score -= Score[0];
 				}
 			}
 			if (unusualSubnetConnection) {
-				if (!analysisUnusualSubnetConnection()) {
-					unusualSubnetConnection = false;
-					score--;
+				if (analysisUnusualSubnetConnection() == 0.0) {
+					score -= Score[3];
 				}
 			}
+			/*
+			 * if (unusualProtocol) { if (analysisUnusualProtocol() == 0.0) {
+			 * score -= Score[2]; } }
+			 */
 
 			if (score >= lowerScoreLimit) {
 				this.timeStamp = tempTS;
@@ -223,12 +229,12 @@ public class LogEvent {
 	 * problem we use minusHours(1) but this only works in UTC+1 time zone
 	 */
 	public static Timestamp convertToDatabaseColumn(LocalDateTime ldt) {
-		return Timestamp.valueOf(ldt.minusHours(1));
+		return Timestamp.valueOf(ldt);
 	}
 
 	public static LocalDateTime convertToEntityAttribute(Timestamp ts) {
 		if (ts != null) {
-			return ts.toLocalDateTime().minusHours(1);
+			return ts.toLocalDateTime();
 		}
 		return null;
 	}
@@ -262,7 +268,7 @@ public class LogEvent {
 			}
 
 		} catch (SQLException e) {
-			System.err.println("Error: Query  Failed @getLogEvents");
+			System.err.println("Error: Query  Failed @getLogEvents" + e.getMessage());
 		}
 
 		return logEventList;
@@ -319,39 +325,67 @@ public class LogEvent {
 	 */
 
 	public double analysisLogEventAPT() {
+		// Every Method can return a maximum score of 10! (added to a max of 70)
+		// TODO evtl ergebnis der aufrufe (analysisUnusualHostOrIp etc) als
+		// variable speichern (performance, so wird der algorithmus doppelt
+		// ausgeführt)
 
-		if (analysisUnusualProtocol()) {
-			score++;
-			unusualProtocol = true;
+		if (analysisUnusualHostOrIp() > 10) {
+			Score[0] = 10;
+			score += 10;
+		} else {
+			score += analysisUnusualHostOrIp();
+			Score[0] = analysisUnusualHostOrIp();
 		}
 
-		score += analysisUnusualSystem();
-
-		if (analysisUnusualTime()) {
-			score++;
-			unusualTime = true;
+		if (analysisUnusualPortscanning() > 10) {
+			Score[1] = 10;
+			score += 10;
+		} else {
+			score += analysisUnusualPortscanning();
+			Score[1] = analysisUnusualPortscanning();
 		}
 
-		if (analysisUnusualHostOrIp()) {
-			score++;
-			unusualHostOrIp = true;
+		/*
+		 * if (analysisUnusualProtocol() > 10) { Score[2] = 10; score += 10; }
+		 * else { score += analysisUnusualProtocol(); Score[2] =
+		 * analysisUnusualProtocol(); }
+		 */
+
+		if (analysisUnusualSubnetConnection() > 10) {
+			Score[3] = 10;
+			score += 10;
+		} else {
+			score += analysisUnusualSubnetConnection();
+			Score[3] = analysisUnusualSubnetConnection();
+		}
+
+		if (analysisUnusualSystem() > 10) {
+			Score[4] = 10;
+			score += 10;
+		} else {
+			Score[4] = analysisUnusualSystem();
+			score += analysisUnusualSystem();
+		}
+
+		if (analysisUnusualTime() > 10) {
+			Score[5] = 10;
+			score += 10;
+		} else {
+			Score[5] = analysisUnusualTime();
+			score += analysisUnusualTime();
 		}
 
 		if (requestResponseSize != 0) {
-			if (analysisUnusuallyLowNumberOfBytes())
-				score++;
-			unusualLowNumOfBytes = true;
-		}
-
-		if (analysisUnusualSubnetConnection()) {
-			score++;
-			unusualSubnetConnection = true;
-		}
-
-		if (analysisUnusualPortscanning()) {
-			score++;
-			unusualPortscanning = true;
-		}
+			if (analysisUnusuallyLowNumberOfBytes() > 10) {
+				Score[6] = 10;
+				score += 10;
+			} else {
+				Score[6] = analysisUnusuallyLowNumberOfBytes();
+				score += analysisUnusuallyLowNumberOfBytes();
+			}
+		} else
+			Score[6] = 0.0;
 
 		if (score >= lowerScoreLimit) {
 			try {
@@ -371,7 +405,7 @@ public class LogEvent {
 				System.err.println("Error: Could not create indicator;" + e.getMessage());
 			}
 		}
-
+		// System.out.println("Final Score of Analysis:" + score);
 		return score;
 	}
 
@@ -379,8 +413,8 @@ public class LogEvent {
 	 * analysis: log at unusual time? (based on User ID!); uses activity in last
 	 * 2 hours and last 10 minutes
 	 */
-	private boolean analysisUnusualTime() {
-		boolean restPeriod = false;
+	private double analysisUnusualTime() {
+		double result = 0.0;
 		long numberOfLogsTwoHours;
 		long numberOfLogsTenMinutes;
 		double medianTwoHours;
@@ -410,16 +444,18 @@ public class LogEvent {
 				medianTenMinutes = numberOfLogsTenMinutes / 10;
 
 				if (medianTenMinutes < medianTwoHours) {
-					restPeriod = true;
+					double temp = (medianTwoHours / medianTenMinutes) * 10;
+					result = 107 / 31500000 * Math.pow(temp, 5) - 37 / 126000 * Math.pow(temp, 4)
+							+ 439 / 50400 * Math.pow(temp, 3) - 25 / 252 * Math.pow(temp, 2) + 813 / 1400 * temp;
 				} else {
-					restPeriod = false;
+					result = 0.0;
 				}
 				numAnalyzed++;
 			} catch (SQLException e) {
 				System.err.println("Query failed! @TimeAnalysis");
 			}
 		}
-		return restPeriod;
+		return result;
 	}
 
 	private double analysisUnusualSystem() {
@@ -470,7 +506,7 @@ public class LogEvent {
 							unusualSystem = false;
 						} else {
 							unusualSystem = true;
-							logonScore = 1;
+							logonScore = 1 / 24 * Math.pow(numberOfLogins, 3) + 23 / 24 * numberOfLogins;
 						}
 					}
 				}
@@ -540,23 +576,42 @@ public class LogEvent {
 	 * given) or generally TODO unusual protocol in combination with other stuff
 	 */
 
-	private boolean analysisUnusualProtocol() {
-		boolean unusualProtocol = false;
-		if (connection != null) {
-			try {
-				Statement stmt = connection.createStatement();
-				ResultSet resultSet = stmt
-						.executeQuery("SELECT COUNT (*) FROM \"SAP_SEC_MON\".\"sap.secmon.db::Log.Events\" "
-								+ "WHERE \"UserIdActing\" = '" + userIdActor + "'" + " AND \"NetworkProtocol\" = '"
-								+ protocol + "'"); // TODO continue this
-			} catch (Exception e) {
-				System.err.println("Query failed @unusualProtocol");
-			}
-		}
-		return unusualProtocol;
-	}
+	/*
+	 * private int analysisUnusualProtocol() { int unusualProtocol = 0; String
+	 * condition = "";
+	 * 
+	 * if (userIdActor != null) { condition = "\"UserIdActing\" = '" +
+	 * userIdActor + "'"; } else if (networkIPAddressActor != null) { condition
+	 * = "\"NetworkIPAddressActor\" = '" + networkIPAddressActor + "'"; } else
+	 * if (networkIPAddressInitiator != null) { condition =
+	 * "\"NetworkIPAddressInitiator\" = '" + networkIPAddressInitiator + "'"; }
+	 * else {
+	 * System.err.println("Error: It is not possible to analyze the protocol");
+	 * return unusualProtocol = 0; }
+	 * 
+	 * if (systemIdActor != null) { condition = condition +
+	 * " \"SystemIdActor\" = '" + systemIdActor + "'"; } else if (true) { //
+	 * TODO eventlogtype
+	 * 
+	 * }
+	 * 
+	 * if (connection != null) { try { Statement stmt =
+	 * connection.createStatement(); ResultSet resultSet =
+	 * stmt.executeQuery("SELECT (COUNT(*)/( " +
+	 * "SELECT COUNT (*) FROM \"SAP_SEC_MON\".\"sap.secmon.db::Log.Events\" WHERE "
+	 * + condition + " AND \"NetworkProtocol\" IS NOT NULL " +
+	 * ")) AS \"FREQUENCY\" " +
+	 * " FROM \"SAP_SEC_MON\".\"sap.secmon.db::Log.Events\" " + "WHERE " +
+	 * condition + " AND \"NetworkProtocol\" = '" + protocol + "';");
+	 * resultSet.next(); System.out.println(resultSet.getDouble(1));
+	 * 
+	 * } catch (Exception e) {
+	 * System.err.println("Query failed @unusualProtocol"+ e.getMessage()); } }
+	 * return unusualProtocol; }
+	 */
 
-	private boolean analysisUnusualHostOrIp() {
+	private double analysisUnusualHostOrIp() {
+		double result = 0.0;
 		boolean unusualHost = false;
 		long numberOfFormerConnections;
 
@@ -575,9 +630,9 @@ public class LogEvent {
 					System.out.println(numberOfFormerConnections);
 
 					if (numberOfFormerConnections > 0) {
-						unusualHost = false;
+						result = 0.0;
 					} else {
-						unusualHost = true;
+						result = 10.0;
 					}
 
 				} else if (networkIPAddressTarget == null && networkHostnameTarget != null) {
@@ -593,9 +648,9 @@ public class LogEvent {
 					System.out.println(numberOfFormerConnections);
 
 					if (numberOfFormerConnections > 0) {
-						unusualHost = false;
+						result = 0.0;
 					} else {
-						unusualHost = true;
+						result = 10.0;
 					}
 
 				} else if (networkIPAddressTarget != null && networkHostnameTarget != null) {
@@ -612,9 +667,9 @@ public class LogEvent {
 					System.out.println(numberOfFormerConnections);
 
 					if (numberOfFormerConnections > 0) {
-						unusualHost = false;
+						result = 0.0;
 					} else {
-						unusualHost = true;
+						result = 10.0;
 					}
 					numAnalyzed++;
 				} else {
@@ -625,12 +680,12 @@ public class LogEvent {
 				System.err.println("Query failed! @ IP/HostAnalysis");
 			}
 		}
-		return unusualHost;
+		return result;
 	}
 
 	// TODO use ML for determining an unusually low number of bytes
-	private boolean analysisUnusuallyLowNumberOfBytes() {
-		boolean lowNumberOfBytes = false;
+	private double analysisUnusuallyLowNumberOfBytes() {
+		double result = 0.0;
 		if (connection != null) {
 			try {
 				Statement stmt = connection.createStatement();
@@ -640,9 +695,11 @@ public class LogEvent {
 								+ " AND \"ResourceResponseSize\" IS NOT NULL");
 				resultSet.next();
 				if (this.requestResponseSize <= resultSet.getDouble(1)) {
-					lowNumberOfBytes = true;
+					double temp = (resultSet.getDouble(1) / this.requestResponseSize) * 10;
+					result = 107 / 31500000 * Math.pow(temp, 5) - 37 / 126000 * Math.pow(temp, 4)
+							+ 439 / 50400 * Math.pow(temp, 3) - 25 / 252 * Math.pow(temp, 2) + 813 / 1400 * temp;
 				} else {
-					lowNumberOfBytes = false;
+					result = 0.0;
 				}
 				numAnalyzed++;
 			} catch (SQLException e) {
@@ -650,11 +707,12 @@ public class LogEvent {
 			}
 
 		}
-		return lowNumberOfBytes;
+		return result;
 	}
 
-	private boolean analysisUnusualSubnetConnection() {
-		boolean unusualSubnetConnection = false;
+	private double analysisUnusualSubnetConnection() {
+		// boolean unusualSubnetConnection = false;
+		double result = 0.0;
 		if (connection != null) {
 			try {
 				// unusual subnetidinitiator?
@@ -667,7 +725,6 @@ public class LogEvent {
 					resultSet.next();
 					if (resultSet.getInt(1) < 2) {
 						unusualSubnetConnection = true;
-						System.out.println("case 1");
 					} else {
 						unusualSubnetConnection = false;
 						// unusual subnetidinitiator and actor?
@@ -680,10 +737,10 @@ public class LogEvent {
 											+ "' AND \"NetworkSubnetIdActor\" = '" + subnetIdActor + "'");
 							resultSetCase2.next();
 							if (resultSetCase2.getInt(1) < 2) {
-								unusualSubnetConnection = true;
+								result = 10.0;
 								System.out.println("case 2");
 							} else {
-								unusualSubnetConnection = false;
+								result = 0.0;
 
 							}
 						}
@@ -695,9 +752,8 @@ public class LogEvent {
 											+ "' AND \"NetworkSubnetIdInitiator\" = '" + subnetIdInitiator
 											+ "' AND \"NetworkSubnetIdTarget\" = '" + subnetIdTarget + "'");
 							resultSetCase3.next();
-							if (resultSetCase3.getInt(1) < 2) {
-								unusualSubnetConnection = true;
-								System.out.println("case 3");
+							if (resultSetCase3.getInt(1) < 3) {
+								result = 10;
 							} else {
 								unusualSubnetConnection = false;
 								// unusual subnetidinitiator, target and actor?
@@ -710,10 +766,9 @@ public class LogEvent {
 													+ " AND \"NetworkSubnetIdActor\" = '" + subnetIdActor + "'");
 									resultSetCase4.next();
 									if (resultSetCase4.getInt(1) < 2) {
-										unusualSubnetConnection = true;
-										System.out.println("case 4");
+										result = 10;
 									} else {
-										unusualSubnetConnection = false;
+										result = 0.0;
 									}
 								}
 							}
@@ -727,12 +782,13 @@ public class LogEvent {
 			}
 
 		}
-		return unusualSubnetConnection;
+		return result;
 	}
 
 	// TODO check whether these IPs frequently have contact and not only
 	// once, check for subnet as well
-	private boolean analysisUnusualPortscanning() {
+	private double analysisUnusualPortscanning() {
+		double result = 0.0;
 		boolean unusualPortScanning = false;
 		if (connection != null) {
 			try {
@@ -741,18 +797,16 @@ public class LogEvent {
 					if (networkIPAddressInitiator != null) {
 						numAnalyzed++;
 						// check for portscanning from the initiator IP address
-						if (this._checkUnusualPortscanning("initiator", stmt)) {
+						if (this._checkUnusualPortscanning("initiator", stmt) > 0.0) {
 							// portscanning from the initiator IP
-							unusualPortScanning = true;
-							return unusualPortScanning;
+							return this._checkUnusualPortscanning("initiator", stmt);
 						} else { // check for portscanning from the actor IP
 							if (networkIPAddressActor != null) {
 								return this._checkUnusualPortscanning("actor", stmt);
 							} else {
 								// no portscanning from initiator or actor ip
 								// address
-								unusualPortScanning = false;
-								return unusualPortScanning;
+								return 0.0;
 							}
 						}
 					} else { // no initiator IP address given
@@ -771,14 +825,15 @@ public class LogEvent {
 				System.err.println("Query failed! @PortscanningAnalysis");
 			}
 		}
-		return unusualPortScanning;
+		return result;
 	}
 
 	// ipAddress should either contain "actor" or "initiator"
 	// TODO transform ipv4 address into ipv6 adress
 	// TODO group by origin, are there more than x connections in the past
 	// future when there were <= x connections in the past
-	private boolean _checkUnusualPortscanning(String ipAddress, Statement stmt) {
+	private double _checkUnusualPortscanning(String ipAddress, Statement stmt) {
+		double result = 0.0;
 		boolean unusualPortScanning = false;
 		String ipName = null;
 		String comparableIPAddress = null;
@@ -800,7 +855,7 @@ public class LogEvent {
 			} else {
 				System.err.println(
 						"Error: ipAddress does not contain \"actor\" or \"initiator\" or has a different IP format");
-				return false;
+				return result = 0.0;
 			}
 
 			//
@@ -823,10 +878,12 @@ public class LogEvent {
 							+ "' AND \"Timestamp\" BETWEEN '" + convertToDatabaseColumn(timeStamp.minusWeeks(1))
 							+ "' AND '" + convertToDatabaseColumn(timeStamp) + "';");
 					resultSet.next();
-					if (resultSet.getInt(1) > 4 && resultSet.getInt(1) < 100) {
-						unusualPortScanning = true;
+					if (resultSet.getInt(1) > 2 && resultSet.getInt(1) < 100) {
+						result = 1 / 20 * Math.pow(resultSet.getInt(1), 5) - 7 / 10 * Math.pow(resultSet.getInt(1), 4)
+								+ 197 / 60 * Math.pow(resultSet.getInt(1), 3)
+								- 57 / 10 * Math.pow(resultSet.getInt(1), 2) + 61 / 15 * resultSet.getInt(1);
 					} else {
-						unusualPortScanning = false;
+						result = 0.0;
 					}
 					numAnalyzed++;
 				} catch (SQLException e) {
@@ -850,7 +907,7 @@ public class LogEvent {
 			} else {
 				System.err.println(
 						"Error: ipAddress does not contain \"actor\" or \"initiator\" or has a different IP format");
-				return false;
+				return result = 0.0;
 			}
 			// ============== //this is probably working, test!
 			if (Integer.parseInt(ip_compare[0]) == Integer.parseInt(ip_target[0])
@@ -879,8 +936,6 @@ public class LogEvent {
 							+ (substring_length + 1) + ", " + deviceIPLength + ") <> '" + ip_device
 							+ "' AND \"Timestamp\" BETWEEN '" + convertToDatabaseColumn(timeStamp.minusWeeks(1))
 							+ "' AND '" + convertToDatabaseColumn(timeStamp) + "';");
-					// BETWEEN '24.01.2018 00:00:00.0' AND '31.01.2018
-					// 00:00:00.0'");
 					resultSet.next();
 					if (resultSet.getInt(1) > 4 && resultSet.getInt(1) < 100) {
 						unusualPortScanning = true;
@@ -898,7 +953,7 @@ public class LogEvent {
 			// ==============
 		}
 
-		return unusualPortScanning;
+		return result;
 	}
 
 }

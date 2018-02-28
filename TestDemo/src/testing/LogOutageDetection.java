@@ -51,7 +51,7 @@ public class LogOutageDetection {
 
 				handler.cancel(true);
 			}
-		}, 4*60, MINUTES);
+		}, 4 * 60, MINUTES);
 
 	}
 
@@ -62,7 +62,7 @@ public class LogOutageDetection {
 			// check for log outages
 			System.out.println("Log Outages:");
 			ResultSet resultSet = stmt.executeQuery(
-					"select distinct( concat( \"LE\".\"EventLogType\", concat( ',', \"LE\".\"TechnicalLogCollectorName\" ) ) ), count(*), MAX(\"LE\".\"Timestamp\") "
+					"select distinct( concat( \"LE\".\"EventLogType\", concat( ',', \"LE\".\"TechnicalLogCollectorName\" ) ) ), MAX(\"LE\".\"Timestamp\") "
 							+ "from \"SAP_SEC_MON\".\"sap.secmon.db::Log.Events\" as \"LE\" "
 							+ "where \"LE\".\"Timestamp\" between add_seconds ( CURRENT_UTCTIMESTAMP, -3600 ) and add_seconds ( CURRENT_UTCTIMESTAMP, -300 ) "
 							+ "and \"LE\".\"EventLogType\" is not null "
@@ -83,9 +83,9 @@ public class LogOutageDetection {
 				writer.write(timestamp + ";");
 				String[] columnValue = resultSet.getString(1).split(",");
 				writer.write(columnValue[1] + ";" + columnValue[0] + ";");
-				String TSofFallout = resultSet.getString(3);
+				String TSofFallout = resultSet.getString(2);
 				writer.write(TSofFallout + ";");
-				String score = resultSet.getString(2);
+				// String score = resultSet.getString(2);
 				writer.write(";;;\n");
 				// print out on system
 				for (int i = 1; i <= resultSet.getMetaData().getColumnCount(); i++) {
@@ -122,8 +122,8 @@ public class LogOutageDetection {
 				writer.write(columnValue[1] + ";" + columnValue[0] + ";");
 				String score = resultSetCB.getString(2);
 				String TSofResurrection = resultSetCB.getString(3);
-				writer.write(";" +TSofResurrection + ";;;\n");
-				// print out 
+				writer.write(";" + TSofResurrection + ";;;\n");
+				// print out
 				for (int i = 1; i <= resultSetCB.getMetaData().getColumnCount(); i++) {
 					String columnValue11 = resultSetCB.getString(i);
 					System.out.println(columnValue11);
